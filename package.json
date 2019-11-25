@@ -1,0 +1,31 @@
+{
+  "name": "@sigma-db/napi-cli",
+  "version": "0.0.1",
+  "description": "A utility to setup an environment for development of native Node.js modules.",
+  "keywords": [
+    "N-API",
+    "native"
+  ],
+  "author": {
+    "name": "David Luis Wiegandt",
+    "email": "wigandtd@hu-berlin.de",
+    "url": "https://dlw93.github.io"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://dev.azure.com/dlw/sigmaDB/_git/napi-cli"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=13.0.0"
+  },
+  "bin": "index.js",
+  "scripts": {
+    "prepare": "webpack"
+  },
+  "devDependencies": {
+    "tar-fs": "^2.0.0",
+    "webpack": "^4.41.2",
+    "webpack-cli": "^3.3.10"
+  }
+}
