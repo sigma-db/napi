@@ -138,10 +138,9 @@ const unindent = (strings, ...keys) => {
     }
 }
 
-const generateCMakeFile = (name) => new Promise(async (resolve, reject) => {
-    const cmakeVersion = await getCMakeVersion();
+const generateCMakeFile = (name, version) => new Promise(async (resolve, reject) => {
     const cmake = unindent`
-        cmake_minimum_required(VERSION ${cmakeVersion})
+        cmake_minimum_required(VERSION ${version})
         project(${name})
 
         set(CMAKE_C_STANDARD 99)
@@ -157,6 +156,7 @@ const generateCMakeFile = (name) => new Promise(async (resolve, reject) => {
         endif()
         add_definitions(-DNAPI_VERSION=5)
         # END N-API specific`;
+    
     writeFile(CMAKE_FILE, cmake, error => !error ? resolve() : reject(error.message));
 });
 
@@ -174,7 +174,7 @@ const generateSourceFile = (name) => new Promise((resolve, reject) => {
         }
 
         NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`;
-
+    
     mkdir(SRC_DIR, (err) => {
         if (err) reject(err.message);
         else writeFile(SRC_FILE, src, error => !error ? resolve() : reject(error.message))
@@ -182,10 +182,16 @@ const generateSourceFile = (name) => new Promise((resolve, reject) => {
 });
 
 const create = async (name) => {
-    console.log(`Generating sample project files...`);
-    await generateCMakeFile(name).catch(createErrorFunction(CMAKE_FILE));
-    await generateSourceFile().catch(createErrorFunction(SRC_DIR));
-    await init();
+    if (await isToolAvailable("cmake")) {
+        console.log("Generating sample project files...");
+        const version = await getCMakeVersion();
+        await generateCMakeFile(name, version).catch(createErrorFunction(CMAKE_FILE));
+        await generateSourceFile(name).catch(createErrorFunction(SRC_DIR));
+        console.log("Done");
+    } else {
+        console.error("Can not generate a CMakeLists.txt without 'cmake' in the path.");
+        process.exit(1);
+    }
 }
 
 const init = async () => {
