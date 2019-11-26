@@ -156,7 +156,7 @@ const generateCMakeFile = (name, version) => new Promise(async (resolve, reject)
         endif()
         add_definitions(-DNAPI_VERSION=5)
         # END N-API specific`;
-    
+
     writeFile(CMAKE_FILE, cmake, error => !error ? resolve() : reject(error.message));
 });
 
@@ -174,7 +174,7 @@ const generateSourceFile = (name) => new Promise((resolve, reject) => {
         }
 
         NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`;
-    
+
     mkdir(SRC_DIR, (err) => {
         if (err) reject(err.message);
         else writeFile(SRC_FILE, src, error => !error ? resolve() : reject(error.message))
@@ -183,7 +183,7 @@ const generateSourceFile = (name) => new Promise((resolve, reject) => {
 
 const create = async (name) => {
     if (await isToolAvailable("cmake")) {
-        console.log("Generating sample project files...");
+        console.log("Generating sample project...");
         const version = await getCMakeVersion();
         await generateCMakeFile(name, version).catch(createErrorFunction(CMAKE_FILE));
         await generateSourceFile(name).catch(createErrorFunction(SRC_DIR));
@@ -194,16 +194,17 @@ const create = async (name) => {
     }
 }
 
-const init = async () => {
+const install = async () => {
     const onExit = createErrorFunction(NODE_HEADER_DIR);
 
-    console.log(`Downloading Node.js header files...`);
+    console.log(`Downloading Node.js headers...`);
     await fetchHeaders().catch(onExit);
 
     if (IS_WINDOWS) {
-        console.log(`Downloading Node.js library files required on Windows...`);
+        console.log(`Downloading Node.js static library...`);
         await fetchLib().catch(onExit);
     }
+
     console.log("Done.")
 }
 
@@ -236,11 +237,12 @@ const clean = (all = false) => {
 
 const [, , cmd, arg] = process.argv;
 switch (true) {
-    case cmd === "new" && !!arg:
+    case cmd === "create" && !!arg:
+        install();
         create(arg);
         return;
-    case cmd === "init":
-        init();
+    case cmd === "install":
+        install();
         return;
     case cmd === "build":
         build();
