@@ -1,6 +1,6 @@
 {
   "name": "@sigma-db/napi-cli",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A utility to setup an environment for development of native Node.js modules.",
   "keywords": [
     "N-API",
