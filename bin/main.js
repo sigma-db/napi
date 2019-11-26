@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 "use strict";
 const { exec } = require('child_process');
 const { mkdirSync, createWriteStream, rmdirSync, access, writeFile } = require("fs");
