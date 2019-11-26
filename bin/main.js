@@ -1,12 +1,10 @@
-#!/usr/bin/env node
 "use strict";
 const { exec } = require('child_process');
 const { mkdirSync, createWriteStream, rmdirSync, access, writeFile } = require("fs");
 const { get } = require("https");
 const { EOL } = require("os");
-const { join, resolve } = require("path");
+const { join } = require("path");
 const { extract } = require("tar-fs");
-const { pathToFileURL } = require('url');
 const { createGunzip } = require("zlib");
 
 // constants regarding the architecture and OS node currently runs on
