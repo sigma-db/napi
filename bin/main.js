@@ -1,11 +1,11 @@
 "use strict";
 const { exec } = require('child_process');
-const { mkdirSync, createWriteStream, rmdirSync, access, writeFile } = require("fs");
+const { access, mkdirSync, rmdirSync, createWriteStream, writeFile } = require("fs");
 const { get } = require("https");
 const { EOL } = require("os");
 const { join } = require("path");
-const { extract } = require("tar-fs");
-const { createGunzip } = require("zlib");
+const { extract: untar } = require("tar-fs");
+const { createGunzip: gunzip } = require("zlib");
 
 // constants regarding the architecture and OS node currently runs on
 const NODE_VERSION = process.version;
@@ -44,7 +44,7 @@ const buildCMakeParams = ({ vars, generator } = { vars: [], generator: "Ninja" }
 }
 
 const fetchHeaders = () => new Promise((resolve, reject) => {
-    get(`${DIST_BASE_URL}/node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(createGunzip()).pipe(extract(ROOT))
+    get(`${DIST_BASE_URL}/node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT))
         .on("finish", () => resolve()))
         .on("error", err => reject(err.message));
 });
@@ -57,7 +57,7 @@ const fetchLib = () => new Promise((resolve, reject) => {
 });
 
 const runBuild = (CMAKE_BUILD_TYPE = "Release") => new Promise((resolve, reject) => {
-    const cMakeOptions = buildCMakeParams({
+    const params = buildCMakeParams({
         generator: "Ninja",
         vars: { NODE_VERSION, NODE_ARCH, CMAKE_BUILD_TYPE }
     });
@@ -65,7 +65,7 @@ const runBuild = (CMAKE_BUILD_TYPE = "Release") => new Promise((resolve, reject)
     const cmd = [
         "mkdir build",
         "cd build",
-        `cmake ${cMakeOptions} ..`,
+        `cmake ${params} ..`,
         "ninja"
     ].join(" && ");
 
