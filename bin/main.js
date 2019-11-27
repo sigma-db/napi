@@ -1,9 +1,9 @@
 "use strict";
-const { exec } = require('child_process');
-const { access, mkdirSync, rmdirSync, renameSync, createWriteStream, writeFile, unlinkSync, lstat, mkdir } = require("fs");
+const { exec } = require("child_process");
+const { access, mkdirSync, rmdirSync, createWriteStream, writeFile, unlinkSync, lstat, mkdir } = require("fs");
 const { get } = require("https");
 const { EOL } = require("os");
-const { join } = require("path");
+const { join, relative } = require("path");
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
@@ -18,12 +18,9 @@ const DIST_BASE_URL = `https://nodejs.org/dist/${NODE_VERSION}`;
 // the directory we will be working in
 const ROOT = process.cwd();
 
-// the directory any build files will be written to
+// generated dirs
 const BUILD_DIR = join(ROOT, "build");
-
-// the source file root directory
 const SRC_DIR = join(ROOT, "src");
-const SRC_FILE = join(SRC_DIR, "module.c");
 
 // constants regarding the structure of the downloaded node files
 const NODE_HEADER_DIR = join(ROOT, `node-${NODE_VERSION}`);
@@ -31,8 +28,11 @@ const NODE_INCLUDE_DIR = join(NODE_HEADER_DIR, "include", "node");
 const NODE_LIB_DIR = join(ROOT, "libs");
 const NODE_LIB_FILE = join(NODE_LIB_DIR, "node.lib");
 
-// the path to the file to be icnluded in order for using the N-API
+// auto generated files
 const CMAKE_FILE = join(ROOT, "CMakeLists.txt");
+const SRC_FILE = join(SRC_DIR, "module.c");
+const GIT_IGNORE_FILE = join(ROOT, ".gitignore");
+const PACKAGE_JSON_FILE = join(ROOT, "package.json");
 
 // the command to use for checking whether an application is available in the path
 const WHICH_CMD = IS_WINDOWS ? "where" : "which";
@@ -50,6 +50,26 @@ const getCMakeVersion = () => new Promise((resolve) => {
         }
         done = true;
     });
+});
+
+const exists = (path) => new Promise((resolve) => {
+    access(path, err => void resolve(!err));
+});
+
+const checkInstalled = async () => new Promise(async (resolve, reject) => {
+    if (!await isToolAvailable("cmake")) {
+        reject("Could not find 'cmake' in the path.");
+    }
+    if (!await isToolAvailable("ninja")) {
+        reject("Could not find 'ninja' in the path.");
+    }
+    if (!await exists(NODE_INCLUDE_DIR)) {
+        reject("Missing header files.");
+    }
+    if (IS_WINDOWS && !await exists(NODE_LIB_FILE)) {
+        reject("Missing library files.");
+    }
+    resolve(true);
 });
 
 const fetchHeaders = () => new Promise((resolve, reject) => {
@@ -111,21 +131,7 @@ const createErrorFunction = (path) => {
     };
 }
 
-const exists = (path) => new Promise((resolve) => {
-    access(path, err => void resolve(!err));
-});
-
-const checkInit = async () => new Promise(async (resolve, reject) => {
-    if (!await exists(NODE_INCLUDE_DIR)) {
-        reject("Missing header files.");
-    }
-    if (IS_WINDOWS && !await exists(NODE_LIB_FILE)) {
-        reject("Missing library files.");
-    }
-    resolve();
-});
-
-const unindent = (strings, ...keys) => {
+const src = (strings, ...keys) => {
     let lines = strings.reduce((res, str, idx) => `${res}${keys[idx - 1]}${str}`).split("\n");
     if (lines.length) {
         let depth = 0;
@@ -139,7 +145,7 @@ const unindent = (strings, ...keys) => {
 }
 
 const generateCMakeFile = (name, version) => new Promise(async (resolve, reject) => {
-    const cmake = unindent`
+    const cmake = src`
         cmake_minimum_required(VERSION ${version})
         project(${name})
 
@@ -161,7 +167,7 @@ const generateCMakeFile = (name, version) => new Promise(async (resolve, reject)
 });
 
 const generateSourceFile = (name) => new Promise((resolve, reject) => {
-    const src = unindent`
+    const sample = src`
         #include <stdlib.h>
         #include <node_api.h>
         #include <assert.h>
@@ -175,19 +181,49 @@ const generateSourceFile = (name) => new Promise((resolve, reject) => {
 
         NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`;
 
-    mkdir(SRC_DIR, (err) => {
-        if (err) reject(err.message);
-        else writeFile(SRC_FILE, src, error => !error ? resolve() : reject(error.message))
-    });
+    writeFile(SRC_FILE, sample, error => !error ? resolve() : reject(error.message));
 });
 
+const generateGitIgnoreFile = () => new Promise((resolve, reject) => {
+    const gitIgnore = src`
+        .vscode
+        ${relative(ROOT, BUILD_DIR)}
+        ${relative(ROOT, NODE_HEADER_DIR)}
+        ${relative(ROOT, NODE_LIB_DIR)}`;
+
+    writeFile(GIT_IGNORE_FILE, gitIgnore, error => !error ? resolve() : reject(error.message));
+});
+
+const generatePackageJsonFile = (name) => new Promise((resolve, reject) => {
+    const packageJson = src`
+        \{
+            "name": "${name}",
+            "version": "0.0.0",
+            "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}"
+        \}`;
+
+    writeFile(PACKAGE_JSON_FILE, packageJson, error => !error ? resolve() : reject(error.message));
+});
+
+const generateProject = (name, version) => {
+    mkdir(SRC_DIR, async (err) => {
+        if (!err) {
+            await generateCMakeFile(name, version).catch(createErrorFunction(CMAKE_FILE));
+            await generateSourceFile(name).catch(createErrorFunction(SRC_DIR));
+            await generateGitIgnoreFile().catch(createErrorFunction(GIT_IGNORE_FILE));
+            await generatePackageJsonFile(name).catch(createErrorFunction(PACKAGE_JSON_FILE));
+        } else {
+            console.error(err.message);
+            process.exit(1);
+        }
+    });
+};
+
 const create = async (name) => {
+    await install();
     if (await isToolAvailable("cmake")) {
-        console.log("Generating sample project...");
         const version = await getCMakeVersion();
-        await generateCMakeFile(name, version).catch(createErrorFunction(CMAKE_FILE));
-        await generateSourceFile(name).catch(createErrorFunction(SRC_DIR));
-        console.log("Done");
+        generateProject(name, version);
     } else {
         console.error("Can not generate a CMakeLists.txt without 'cmake' in the path.");
         process.exit(1);
@@ -196,34 +232,18 @@ const create = async (name) => {
 
 const install = async () => {
     const onExit = createErrorFunction(NODE_HEADER_DIR);
-
-    console.log(`Downloading Node.js headers...`);
     await fetchHeaders().catch(onExit);
-
     if (IS_WINDOWS) {
-        console.log(`Downloading Node.js static library...`);
         await fetchLib().catch(onExit);
     }
-
-    console.log("Done.")
 }
 
 const build = async () => {
-    !await checkInit().catch(createErrorFunction());
-    console.log("Checking for required build tools...")
-    if (!await isToolAvailable("cmake")) {
-        console.error("Could not find 'cmake' in the path.");
-    } else if (!await isToolAvailable("ninja")) {
-        console.error("Could not find 'ninja' in the path.");
-    } else {
-        console.log(`Building project...`);
-        await runBuild().catch(createErrorFunction(BUILD_DIR));
-        console.log("Done.")
-    }
+    await checkInstalled().catch(createErrorFunction());
+    await runBuild().catch(createErrorFunction(BUILD_DIR));
 }
 
 const clean = (all = false) => {
-    console.log("Cleaning up...");
     try {
         rmdirSync(BUILD_DIR, { recursive: true });
         if (all) {
@@ -238,19 +258,24 @@ const clean = (all = false) => {
 const [, , cmd, arg] = process.argv;
 switch (true) {
     case cmd === "create" && !!arg:
-        install();
+        console.log("Generating sample project...");
         create(arg);
         return;
     case cmd === "install":
+        console.log("Fetching Node.js dependencies...");
         install();
         return;
     case cmd === "build":
+        console.log("Building project...");
         build();
         return;
     case cmd === "clean":
+        console.log("Cleaning up...");
         clean(arg === "all");
         return;
     default:
-        console.error("None of the possible options 'init', 'build', or 'clean' were specified.");
+        console.error("None of the possible options 'create', 'install', 'build', or 'clean' were specified.");
         process.exit(1);
 }
+
+console.log("Success");
