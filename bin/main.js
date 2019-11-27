@@ -260,19 +260,19 @@ switch (true) {
     case cmd === "create" && !!arg:
         console.log("Generating sample project...");
         create(arg);
-        return;
+        break;
     case cmd === "install":
         console.log("Fetching Node.js dependencies...");
         install();
-        return;
+        break;
     case cmd === "build":
         console.log("Building project...");
         build();
-        return;
+        break;
     case cmd === "clean":
         console.log("Cleaning up...");
         clean(arg === "all");
-        return;
+        break;
     default:
         console.error("None of the possible options 'create', 'install', 'build', or 'clean' were specified.");
         process.exit(1);
