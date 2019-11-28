@@ -1,6 +1,7 @@
 "use strict";
 const { exec } = require("child_process");
-const { access, mkdirSync, rmdirSync, createWriteStream, writeFile, unlinkSync, lstat, mkdir } = require("fs");
+const { createWriteStream } = require("fs");
+const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
 const { get } = require("https");
 const { EOL } = require("os");
 const { join, relative } = require("path");
@@ -8,6 +9,7 @@ const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
 
+// #region Constant Declarations
 const NODE_VERSION = process.version;
 const IS_WINDOWS = process.platform === "win32"
 const NODE_ARCH = process.arch === "x64" ? "win-x64" : "win-x86";
@@ -36,101 +38,41 @@ const PACKAGE_JSON_FILE = join(ROOT, "package.json");
 
 // the command to use for checking whether an application is available in the path
 const WHICH_CMD = IS_WINDOWS ? "where" : "which";
+// #endregion
 
-const isToolAvailable = (tool) => new Promise(resolve => {
-    exec(`${WHICH_CMD} ${tool}`).on("exit", code => resolve(code == 0));
+// #region Utilities
+const verifyCmd = (cmd) => new Promise((resolve, reject) => {
+    exec(`${WHICH_CMD} ${cmd}`).on("exit", code => code === 0 ? resolve() : reject(`Could not find '${cmd}' in the path.`));
 });
 
-const getCMakeVersion = () => new Promise((resolve) => {
-    let done = false;
-    createInterface(exec("cmake --version").stdout).on("line", line => {
-        if (!done) {
-            const version = /(\d+\.\d+\.\d+)/g.exec(line)[1];
-            resolve(version);
-        }
-        done = true;
-    });
-});
-
-const exists = (path) => new Promise((resolve) => {
-    access(path, err => void resolve(!err));
-});
-
-const checkInstalled = async () => new Promise(async (resolve, reject) => {
-    if (!await isToolAvailable("cmake")) {
-        reject("Could not find 'cmake' in the path.");
+const removeFile = async (path, ignoreErrors = true) => {
+    const stats = await lstat(path).catch(catchFunction(null, ignoreErrors));
+    if (!!stats && stats.isFile()) {
+        return unlink(path);
+    } else if (!!stats && stats.isDirectory()) {
+        return rmdir(path, { recursive: true });
+    } else if (!ignoreErrors) {
+        throw new Error("Provided path neither references a file nor a directory.");
     }
-    if (!await isToolAvailable("ninja")) {
-        reject("Could not find 'ninja' in the path.");
-    }
-    if (!await exists(NODE_INCLUDE_DIR)) {
-        reject("Missing header files.");
-    }
-    if (IS_WINDOWS && !await exists(NODE_LIB_FILE)) {
-        reject("Missing library files.");
-    }
-    resolve(true);
-});
+};
 
-const fetchHeaders = () => new Promise((resolve, reject) => {
-    get(`${DIST_BASE_URL}/node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT))
-        .on("finish", () => resolve()))
-        .on("error", err => reject(err.message));
-});
-
-const fetchLib = () => new Promise((resolve, reject) => {
-    mkdirSync(NODE_LIB_DIR);
-    get(`${DIST_BASE_URL}/${NODE_ARCH}/node.lib`, res => res.pipe(createWriteStream(NODE_LIB_FILE)))
-        .on("finish", () => resolve())
-        .on("error", err => reject(err.message));
-});
-
-const runBuild = (debug = false, generator = "Ninja") => new Promise((resolve, reject) => {
-    const params = `-D CMAKE_BUILD_TYPE=${debug ? "Debug" : "Release"} -G ${generator}`;
-    const cmd = [
-        "mkdir build",
-        "cd build",
-        `cmake ${params} ..`,
-        "ninja"
-    ].join(" && ");
-    exec(cmd).on("exit", code => code == 0 ? resolve() : reject(`Build process exited with error code ${code}.`));
-});
-
-const remove = (path) => new Promise((resolve, reject) => {
-    lstat(path, (err, stats) => {
-        if (err) {
-            reject(err.message);
-        } else if (stats.isFile()) {
-            unlinkSync(path);
-            resolve();
-        } else if (stats.isDirectory()) {
-            rmdirSync(path, { recursive: true });
-            resolve();
+const catchFunction = (path, ignore = false) => async (error) => {
+    !ignore && console.error(error);
+    if (!!path) {
+        console.log("Cleaning up...");
+        if (Array.isArray(path)) {
+            await Promise.all(path.map(p => removeFile(p))).catch(catchFunction());
+        } else if (typeof path === "string") {
+            await removeFile(path).catch(catchFunction());
         } else {
-            reject("Provided path neither references a file nor a directory.");
+            console.error(`Could not clean ${path}.`);
         }
-    })
-});
+    }
+    !ignore && process.exit(1);
+};
+// #endregion
 
-const createErrorFunction = (path) => {
-    return async (error) => {
-        console.error(error);
-        if (!!path) {
-            console.log("Cleaning up...");
-            if (Array.isArray(path)) {
-                for (let p of path) {
-                    await remove(p);
-                }
-            } else if (typeof path === "string") {
-                await remove(path);
-            } else {
-                console.error(`Could not clean ${path}.`);
-            }
-        }
-        process.exit(1);
-    };
-}
-
+// #region Create Command
 const src = (strings, ...keys) => {
     let lines = strings.reduce((res, str, idx) => `${res}${keys[idx - 1]}${str}`).split("\n");
     if (lines.length) {
@@ -144,132 +86,168 @@ const src = (strings, ...keys) => {
     }
 }
 
-const generateCMakeFile = (name, version) => new Promise(async (resolve, reject) => {
-    const cmake = src`
-        cmake_minimum_required(VERSION ${version})
-        project(${name})
+const generateCMakeListsFile = (name, version) => writeFile(CMAKE_FILE, src`
+    cmake_minimum_required(VERSION ${version})
+    project(${name})
 
-        set(CMAKE_C_STANDARD 99)
+    set(CMAKE_C_STANDARD 99)
 
-        add_library(\${PROJECT_NAME} SHARED "src/module.c")
-        set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
+    add_library(\${PROJECT_NAME} SHARED "src/module.c")
+    set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
 
-        # BEGIN N-API specific
-        include_directories(node-${NODE_VERSION}/include/node)
-        if(WIN32)
-            find_library(NODE_LIB node libs)
-            target_link_libraries(\${PROJECT_NAME} \${NODE_LIB})
-        endif()
-        add_definitions(-DNAPI_VERSION=5)
-        # END N-API specific`;
+    # BEGIN N-API specific
+    include_directories(node-${NODE_VERSION}/include/node)
+    if(WIN32)
+        find_library(NODE_LIB node libs)
+        target_link_libraries(\${PROJECT_NAME} \${NODE_LIB})
+    endif()
+    add_definitions(-DNAPI_VERSION=5)
+    # END N-API specific`
+);
 
-    writeFile(CMAKE_FILE, cmake, error => !error ? resolve() : reject(error.message));
-});
+const generateSourceFile = (name) => writeFile(SRC_FILE, src`
+    #include <stdlib.h>
+    #include <node_api.h>
+    #include <assert.h>
 
-const generateSourceFile = (name) => new Promise((resolve, reject) => {
-    const sample = src`
-        #include <stdlib.h>
-        #include <node_api.h>
-        #include <assert.h>
+    napi_value Init(napi_env env, napi_value exports) {
+        napi_value str;
+        napi_status status = napi_create_string_utf8(env, "A project named ${name} is growing here.", NAPI_AUTO_LENGTH, &str);
+        assert(status == napi_ok);
+        return str;
+    }
 
-        napi_value Init(napi_env env, napi_value exports) {
-            napi_value str;
-            napi_status status = napi_create_string_utf8(env, "A project named ${name} is growing here.", NAPI_AUTO_LENGTH, &str);
-            assert(status == napi_ok);
-            return str;
-        }
+    NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`
+);
 
-        NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`;
+const generateGitIgnoreFile = () => writeFile(GIT_IGNORE_FILE, src`
+    .vscode
+    ${relative(ROOT, BUILD_DIR)}
+    ${relative(ROOT, NODE_HEADER_DIR)}
+    ${relative(ROOT, NODE_LIB_DIR)}`
+);
 
-    writeFile(SRC_FILE, sample, error => !error ? resolve() : reject(error.message));
-});
+const generatePackageJsonFile = (name) => writeFile(PACKAGE_JSON_FILE, src`
+    \{
+        "name": "${name}",
+        "version": "0.0.0",
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}"
+    \}`
+);
 
-const generateGitIgnoreFile = () => new Promise((resolve, reject) => {
-    const gitIgnore = src`
-        .vscode
-        ${relative(ROOT, BUILD_DIR)}
-        ${relative(ROOT, NODE_HEADER_DIR)}
-        ${relative(ROOT, NODE_LIB_DIR)}`;
-
-    writeFile(GIT_IGNORE_FILE, gitIgnore, error => !error ? resolve() : reject(error.message));
-});
-
-const generatePackageJsonFile = (name) => new Promise((resolve, reject) => {
-    const packageJson = src`
-        \{
-            "name": "${name}",
-            "version": "0.0.0",
-            "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}"
-        \}`;
-
-    writeFile(PACKAGE_JSON_FILE, packageJson, error => !error ? resolve() : reject(error.message));
-});
-
-const generateProject = (name, version) => {
-    mkdir(SRC_DIR, async (err) => {
-        if (!err) {
-            await generateCMakeFile(name, version).catch(createErrorFunction(CMAKE_FILE));
-            await generateSourceFile(name).catch(createErrorFunction(SRC_DIR));
-            await generateGitIgnoreFile().catch(createErrorFunction(GIT_IGNORE_FILE));
-            await generatePackageJsonFile(name).catch(createErrorFunction(PACKAGE_JSON_FILE));
-        } else {
-            console.error(err.message);
-            process.exit(1);
-        }
-    });
+const generateProject = async (name, version) => {
+    await mkdir(SRC_DIR).catch(catchFunction());
+    await Promise.all([
+        generateCMakeListsFile(name, version).catch(catchFunction(CMAKE_FILE)),
+        generateSourceFile(name).catch(catchFunction(SRC_DIR)),
+        generateGitIgnoreFile().catch(catchFunction(GIT_IGNORE_FILE)),
+        generatePackageJsonFile(name).catch(catchFunction(PACKAGE_JSON_FILE))
+    ]);
 };
 
+const cMakeVersion = () => new Promise(async (resolve) => {
+    await verifyCmd("cmake").catch(catchFunction())
+    let done = false;
+    createInterface(exec("cmake --version").stdout)
+        .on("line", line => {
+            if (!done) {
+                const version = /(\d+\.\d+\.\d+)/g.exec(line)[1];
+                resolve(version);
+            }
+            done = true;
+        })
+        .on("close", () => {
+            if (!done) {
+                reject(`Could not parse your "cmake" version.`);
+            }
+        });
+});
+
 const create = async (name) => {
-    await install();
-    if (await isToolAvailable("cmake")) {
-        const version = await getCMakeVersion();
-        generateProject(name, version);
-    } else {
-        console.error("Can not generate a CMakeLists.txt without 'cmake' in the path.");
-        process.exit(1);
-    }
+    const version = await cMakeVersion().catch(catchFunction());
+    await Promise.all([
+        install(),
+        generateProject(name, version)
+    ]);
 }
+// #endregion
+
+// #region Install Command
+const fetchHeaders = () => new Promise((resolve, reject) => {
+    get(`${DIST_BASE_URL}/node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT))
+        .on("finish", () => resolve()))
+        .on("error", err => reject(err.message));
+});
+
+const fetchLib = () => new Promise((resolve, reject) => {
+    get(`${DIST_BASE_URL}/${NODE_ARCH}/node.lib`, res => res.pipe(createWriteStream(NODE_LIB_FILE)))
+        .on("finish", () => resolve())
+        .on("error", err => reject(err.message));
+});
 
 const install = async () => {
-    const onExit = createErrorFunction(NODE_HEADER_DIR);
-    await fetchHeaders().catch(onExit);
+    await fetchHeaders().catch(catchFunction(NODE_HEADER_DIR));
     if (IS_WINDOWS) {
-        await fetchLib().catch(onExit);
+        await mkdir(NODE_LIB_DIR).catch(catchFunction(NODE_HEADER_DIR));
+        await fetchLib().catch(catchFunction([NODE_HEADER_DIR, NODE_LIB_DIR]));
     }
 }
+// #endregion
+
+// #region Build Command
+const verifyEnvironment = async () => {
+    await verifyCmd("cmake");
+    await verifyCmd("ninja");
+    await access(NODE_INCLUDE_DIR);
+    if (IS_WINDOWS) {
+        await access(NODE_LIB_FILE);
+    }
+};
+
+const executeBuild = (debug = false, generator = "Ninja") => new Promise((resolve, reject) => {
+    const params = `-D CMAKE_BUILD_TYPE=${debug ? "Debug" : "Release"} -G ${generator}`;
+    const cmd = [
+        "mkdir build",
+        "cd build",
+        `cmake ${params} ..`,
+        "ninja"
+    ].join(" && ");
+    exec(cmd).on("exit", code => code == 0 ? resolve() : reject(`Build process exited with error code ${code}.`));
+});
 
 const build = async () => {
-    await checkInstalled().catch(createErrorFunction());
-    await runBuild().catch(createErrorFunction(BUILD_DIR));
+    await verifyEnvironment().catch(catchFunction());
+    await executeBuild().catch(catchFunction(BUILD_DIR));
 }
+// #endregion
 
-const clean = (all = false) => {
-    try {
-        rmdirSync(BUILD_DIR, { recursive: true });
-        if (all) {
-            rmdirSync(NODE_HEADER_DIR, { recursive: true });
-        }
-    } catch (error) {
-        console.error(error.message);
-        process.exit(1);
+// #region Clean Command
+const clean = async (all = false) => {
+    await removeFile(BUILD_DIR, true);
+    if (all) {
+        await removeFile(NODE_HEADER_DIR, true);
     }
 }
+// #endregion
 
+// #region Entry Point
 const [, , cmd, arg] = process.argv;
-switch (true) {
-    case cmd === "create" && !!arg:
-        console.log("Generating sample project...");
-        create(arg);
+switch (cmd) {
+    case "create":
+        const name = arg || path.basename(process.cwd());
+        console.log(`Generating project "${name}"...`);
+        create(name);
+        console.log();
         break;
-    case cmd === "install":
+    case "install":
         console.log("Fetching Node.js dependencies...");
         install();
         break;
-    case cmd === "build":
+    case "build":
         console.log("Building project...");
         build();
         break;
-    case cmd === "clean":
+    case "clean":
         console.log("Cleaning up...");
         clean(arg === "all");
         break;
@@ -277,5 +255,4 @@ switch (true) {
         console.error("None of the possible options 'create', 'install', 'build', or 'clean' were specified.");
         process.exit(1);
 }
-
-console.log("Success");
+// #endregion
