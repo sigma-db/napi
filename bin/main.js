@@ -237,7 +237,6 @@ switch (cmd) {
         const name = arg || basename(process.cwd());
         console.log(`Generating project "${name}"...`);
         create(name);
-        console.log();
         break;
     case "install":
         console.log("Fetching Node.js dependencies...");
