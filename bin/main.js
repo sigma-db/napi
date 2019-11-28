@@ -4,7 +4,7 @@ const { createWriteStream } = require("fs");
 const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
 const { get } = require("https");
 const { EOL } = require("os");
-const { join, relative } = require("path");
+const { basename, join, relative } = require("path");
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
@@ -234,7 +234,7 @@ const clean = async (all = false) => {
 const [, , cmd, arg] = process.argv;
 switch (cmd) {
     case "create":
-        const name = arg || path.basename(process.cwd());
+        const name = arg || basename(process.cwd());
         console.log(`Generating project "${name}"...`);
         create(name);
         console.log();
