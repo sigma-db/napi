@@ -38,13 +38,14 @@ const NODE_LIB_FILE = join(NODE_LIB_DIR, "node.lib");
 const CMAKE_FILE = join(ROOT, "CMakeLists.txt");
 const SRC_FILE = join(SRC_DIR, "module.c");
 const TEST_FILE = join(TEST_DIR, "index.js");
+const GIT_DIR = join(ROOT, ".get");
 const GIT_IGNORE_FILE = join(ROOT, ".gitignore");
 const PACKAGE_JSON_FILE = join(ROOT, "package.json");
 // #endregion
 
 // #region Utilities
-const verifyCmd = (cmd) => new Promise((resolve, reject) => {
-    spawn(WHICH_CMD, [cmd]).on("exit", code => code === 0 ? resolve() : reject(`Could not find '${cmd}' in the path.`));
+const verifyCmd = (cmd, optional = false) => new Promise((resolve, reject) => {
+    spawn(WHICH_CMD, [cmd]).on("exit", code => code === 0 ? resolve(true) : optional ? resolve(false) : reject(`Could not find '${cmd}' in the path.`));
 });
 
 const removeFile = async (path, ignoreErrors = true) => {
@@ -150,6 +151,12 @@ const generateTestFile = () => writeFile(TEST_FILE, src`
     console.log(val);`
 );
 
+const generateGit = () => new Promise(async (resolve) =>
+    await verifyCmd("git", true)
+        ? spawn("git", ["init"]).on("exit", code => resolve(code === 0))
+        : resolve(false)
+);
+
 const generateProject = async (name, version) => {
     await mkdir(SRC_DIR).catch(catchFunction());
     await mkdir(TEST_DIR).catch(catchFunction());
@@ -158,8 +165,9 @@ const generateProject = async (name, version) => {
         generateSourceFile(name).catch(catchFunction(SRC_DIR)),
         generateTestFile().catch(catchFunction(TEST_DIR)),
         generateGitIgnoreFile().catch(catchFunction(GIT_IGNORE_FILE)),
-        generatePackageJsonFile(name).catch(catchFunction(PACKAGE_JSON_FILE))
+        generatePackageJsonFile(name).catch(catchFunction(PACKAGE_JSON_FILE)),
     ]);
+    await generateGit().catch(catchFunction(GIT_DIR, true));
 };
 
 const cMakeVersion = () => new Promise(async (resolve) => {
@@ -180,14 +188,15 @@ const create = async (name) => {
     if (name) {
         const prj = join(process.cwd(), name);
         await mkdir(prj).catch(catchFunction());
-        await access(prj).catch(catchFunction());
         process.chdir(prj);
 
         const version = await cMakeVersion().catch(catchFunction());
         await Promise.all([
             install(),
             generateProject(name, version)
-        ]);
+        ]).catch(error => {
+            catchFunction(prj)(`Failed to setup project: ${error}`)
+        });
     } else {
         await catchFunction()("You must specify a project name.");
     }
