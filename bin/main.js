@@ -26,6 +26,7 @@ const ROOT = ".";
 // generated dirs
 const BUILD_DIR = join(ROOT, "build");
 const SRC_DIR = join(ROOT, "src");
+const TEST_DIR = join(ROOT, "test");
 
 // constants regarding the structure of the downloaded node files
 const NODE_HEADER_DIR = join(ROOT, `node-${NODE_VERSION}`);
@@ -36,6 +37,7 @@ const NODE_LIB_FILE = join(NODE_LIB_DIR, "node.lib");
 // auto generated files
 const CMAKE_FILE = join(ROOT, "CMakeLists.txt");
 const SRC_FILE = join(SRC_DIR, "module.c");
+const TEST_FILE = join(TEST_DIR, "index.js");
 const GIT_IGNORE_FILE = join(ROOT, ".gitignore");
 const PACKAGE_JSON_FILE = join(ROOT, "package.json");
 // #endregion
@@ -123,6 +125,7 @@ const generateSourceFile = (name) => writeFile(SRC_FILE, src`
 const generateGitIgnoreFile = () => writeFile(GIT_IGNORE_FILE, src`
     .vscode
     ${relative(ROOT, BUILD_DIR)}
+    ${relative(ROOT, TEST_DIR)}
     ${relative(ROOT, NODE_HEADER_DIR)}
     ${relative(ROOT, NODE_LIB_DIR)}`
 );
@@ -131,22 +134,29 @@ const generatePackageJsonFile = (name) => writeFile(PACKAGE_JSON_FILE, src`
     {
         "name": "${name}",
         "version": "0.0.0",
-        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}",
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", "\\\\")}",
         "devDependencies": {
             "@sigma-db/napi": "^${version}"
         },
         "scripts": {
-            "build": "napi build",
-            "install": "napi init"
+            "install": "napi init && napi build",
+            "test": "node ${TEST_FILE}"
         }
     }`
 );
 
+const generateTestFile = () => writeFile(TEST_FILE, src`
+    const val = require("${ROOT}");
+    console.log(val);`
+);
+
 const generateProject = async (name, version) => {
     await mkdir(SRC_DIR).catch(catchFunction());
+    await mkdir(TEST_DIR).catch(catchFunction());
     await Promise.all([
         generateCMakeListsFile(name, version).catch(catchFunction(CMAKE_FILE)),
         generateSourceFile(name).catch(catchFunction(SRC_DIR)),
+        generateTestFile().catch(catchFunction(TEST_DIR)),
         generateGitIgnoreFile().catch(catchFunction(GIT_IGNORE_FILE)),
         generatePackageJsonFile(name).catch(catchFunction(PACKAGE_JSON_FILE))
     ]);
