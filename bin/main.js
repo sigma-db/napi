@@ -135,7 +135,7 @@ const generatePackageJsonFile = (name) => writeFile(PACKAGE_JSON_FILE, src`
     {
         "name": "${name}",
         "version": "0.0.0",
-        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\" )}",
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\")}",
         "devDependencies": {
             "@sigma-db/napi": "^${version}"
         },
@@ -147,7 +147,7 @@ const generatePackageJsonFile = (name) => writeFile(PACKAGE_JSON_FILE, src`
 );
 
 const generateTestFile = () => writeFile(TEST_FILE, src`
-    const val = require("${ROOT}");
+    const val = require("..");
     console.log(val);`
 );
 
@@ -252,6 +252,14 @@ const build = async () => {
 }
 // #endregion
 
+// #region test
+const test = async () => {
+    const proc = spawn("node", [TEST_DIR], { shell: true });
+    proc.stdout.pipe(process.stdout);
+    proc.stderr.pipe(process.stderr);
+};
+// #endregion
+
 // #region Clean Command
 const clean = async (all = false) => {
     await removeFile(BUILD_DIR, true);
@@ -277,6 +285,10 @@ switch (cmd) {
     case "build":
         console.log("Building project...");
         build();
+        break;
+    case "test":
+        console.log(`Running "node ${TEST_FILE}"`);
+        test();
         break;
     case "clean":
         console.log("Cleaning up...");
