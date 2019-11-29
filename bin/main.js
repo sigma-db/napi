@@ -1,24 +1,27 @@
 "use strict";
-const { exec } = require("child_process");
+const { spawn } = require("child_process");
 const { createWriteStream } = require("fs");
 const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
 const { get } = require("https");
 const { EOL } = require("os");
-const { basename, join, relative } = require("path");
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
+const { version } = require("../package.json");
 
 // #region Constant Declarations
+// platform specific stuff
 const NODE_VERSION = process.version;
 const IS_WINDOWS = process.platform === "win32"
 const NODE_ARCH = process.arch === "x64" ? "win-x64" : "win-x86";
+const { join, relative } = IS_WINDOWS ? require("path").win32 : require("path");
+const WHICH_CMD = IS_WINDOWS ? join(process.env.WINDIR, "System32", "where.exe") : "/usr/bin/which";
 
 // base URL for all node binary distribution and header files
 const DIST_BASE_URL = `https://nodejs.org/dist/${NODE_VERSION}`;
 
 // the directory we will be working in
-const ROOT = process.cwd();
+const ROOT = ".";
 
 // generated dirs
 const BUILD_DIR = join(ROOT, "build");
@@ -35,14 +38,11 @@ const CMAKE_FILE = join(ROOT, "CMakeLists.txt");
 const SRC_FILE = join(SRC_DIR, "module.c");
 const GIT_IGNORE_FILE = join(ROOT, ".gitignore");
 const PACKAGE_JSON_FILE = join(ROOT, "package.json");
-
-// the command to use for checking whether an application is available in the path
-const WHICH_CMD = IS_WINDOWS ? "where" : "which";
 // #endregion
 
 // #region Utilities
 const verifyCmd = (cmd) => new Promise((resolve, reject) => {
-    exec(`${WHICH_CMD} ${cmd}`).on("exit", code => code === 0 ? resolve() : reject(`Could not find '${cmd}' in the path.`));
+    spawn(WHICH_CMD, [cmd]).on("exit", code => code === 0 ? resolve() : reject(`Could not find '${cmd}' in the path.`));
 });
 
 const removeFile = async (path, ignoreErrors = true) => {
@@ -128,11 +128,18 @@ const generateGitIgnoreFile = () => writeFile(GIT_IGNORE_FILE, src`
 );
 
 const generatePackageJsonFile = (name) => writeFile(PACKAGE_JSON_FILE, src`
-    \{
+    {
         "name": "${name}",
         "version": "0.0.0",
-        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}"
-    \}`
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}",
+        "devDependencies": {
+            "@sigma-db/napi": "^${version}"
+        },
+        "scripts": {
+            "build": "napi build",
+            "install": "napi init"
+        }
+    }`
 );
 
 const generateProject = async (name, version) => {
@@ -146,9 +153,9 @@ const generateProject = async (name, version) => {
 };
 
 const cMakeVersion = () => new Promise(async (resolve) => {
-    await verifyCmd("cmake").catch(catchFunction())
+    await verifyCmd("cmake").catch(catchFunction());
     let done = false;
-    createInterface(exec("cmake --version").stdout)
+    createInterface(spawn("cmake", ["--version"]).stdout)
         .on("line", line => {
             if (!done) {
                 const version = /(\d+\.\d+\.\d+)/g.exec(line)[1];
@@ -156,19 +163,24 @@ const cMakeVersion = () => new Promise(async (resolve) => {
             }
             done = true;
         })
-        .on("close", () => {
-            if (!done) {
-                reject(`Could not parse your "cmake" version.`);
-            }
-        });
+        .on("close", () => !done && reject(`Could not parse your "cmake" version.`));
 });
 
 const create = async (name) => {
-    const version = await cMakeVersion().catch(catchFunction());
-    await Promise.all([
-        install(),
-        generateProject(name, version)
-    ]);
+    if (name) {
+        const prj = join(process.cwd(), name);
+        await mkdir(prj).catch(catchFunction());
+        await access(prj).catch(catchFunction());
+        process.chdir(prj);
+
+        const version = await cMakeVersion().catch(catchFunction());
+        await Promise.all([
+            install(),
+            generateProject(name, version)
+        ]);
+    } else {
+        await catchFunction()("You must specify a project name.");
+    }
 }
 // #endregion
 
@@ -212,7 +224,7 @@ const executeBuild = (debug = false, generator = "Ninja") => new Promise((resolv
         `cmake ${params} ..`,
         "ninja"
     ].join(" && ");
-    exec(cmd).on("exit", code => code == 0 ? resolve() : reject(`Build process exited with error code ${code}.`));
+    spawn(cmd, { shell: true }).on("exit", code => code == 0 ? resolve() : reject(`Build process exited with error code ${code}.`));
 });
 
 const build = async () => {
@@ -234,11 +246,12 @@ const clean = async (all = false) => {
 const [, , cmd, arg] = process.argv;
 switch (cmd) {
     case "create":
-        const name = arg || basename(process.cwd());
-        console.log(`Generating project "${name}"...`);
-        create(name);
+    case "new":
+        console.log(`Generating project...`);
+        create(arg);
         break;
     case "install":
+    case "init":
         console.log("Fetching Node.js dependencies...");
         install();
         break;
