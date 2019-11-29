@@ -135,7 +135,7 @@ const generatePackageJsonFile = (name) => writeFile(PACKAGE_JSON_FILE, src`
     {
         "name": "${name}",
         "version": "0.0.0",
-        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", "\\\\")}",
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\" )}",
         "devDependencies": {
             "@sigma-db/napi": "^${version}"
         },
