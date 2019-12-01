@@ -74,8 +74,13 @@ const catchFunction = (path, ignore = false) => async (error) => {
     !ignore && process.exit(1);
 };
 
-const abort = (error) => {
+const abort = (name) => async (error) => {
+    process.chdir("..");
+    const prjDir = join(process.cwd(), name);
+    await access(prjDir);
+    await rmdir(prjDir);
     console.error(error);
+    process.exit(1);
 };
 // #endregion
 
@@ -149,7 +154,7 @@ const GITIGNORE = () => src`
     ${relative(ROOT, NODE_HEADER_DIR)}
     ${relative(ROOT, NODE_LIB_DIR)}`;
 
-const initGit = () => new Promise(async (resolve) =>
+const gitInit = () => new Promise(async (resolve) =>
     await verifyCmd("git", true)
         ? spawn("git", ["init"]).on("exit", code => resolve(code === 0))
         : resolve(false)
@@ -164,15 +169,14 @@ const generateProject = async (name, version) => {
         writeFile(TEST_FILE, TEST_JS()),
         writeFile(PACKAGE_JSON_FILE, PACKAGE_JSON(name)),
     ]);
-    if (await initGit()) {
+    if (await gitInit()) {
         await writeFile(GITIGNORE_FILE, GITIGNORE());
     } else {
         await removeFile(GIT_DIR, true);
     }
 };
 
-const cMakeVersion = () => new Promise(async (resolve) => {
-    await verifyCmd("cmake").catch(catchFunction());
+const cMakeVersion = () => new Promise((resolve, reject) => {
     let done = false;
     createInterface(spawn("cmake", ["--version"]).stdout)
         .on("line", line => {
@@ -188,16 +192,17 @@ const cMakeVersion = () => new Promise(async (resolve) => {
 const create = async (name) => {
     if (name) {
         const prj = join(process.cwd(), name);
-        await mkdir(prj).catch(abort);
+        await mkdir(prj).catch(abort(name));
         process.chdir(prj);
 
-        const version = await cMakeVersion().catch(abort);
+        await verifyCmd("cmake").catch(abort(name));
+        const version = await cMakeVersion().catch(abort(name));
         await Promise.all([
             install(),
             generateProject(name, version)
-        ]).catch(abort);
+        ]).catch(abort(name));
     } else {
-        abort("You must specify a project name.");
+        abort(name)("You must specify a project name.");
     }
 }
 // #endregion
