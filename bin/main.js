@@ -9,7 +9,7 @@ const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
 const { version: NAPI_VERSION } = require("../package.json");
 
-// #region Constant Declarations
+// #region Constants
 // platform specific stuff
 const NODE_VERSION = process.version;
 const IS_WINDOWS = process.platform === "win32"
@@ -84,7 +84,9 @@ const abort = (name) => async (error) => {
 };
 // #endregion
 
-// #region Create Command
+// #region Commands
+
+// #region Create
 const src = (strings, ...keys) => {
     let lines = strings.reduce((res, str, idx) => `${res}${keys[idx - 1]}${str}`).split("\n");
     if (lines.length) {
@@ -207,7 +209,7 @@ const create = async (name) => {
 }
 // #endregion
 
-// #region Install Command
+// #region Install
 const fetchHeaders = () => new Promise((resolve, reject) => {
     get(`${DIST_BASE_URL}/node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT))
         .on("finish", () => resolve()))
@@ -229,7 +231,7 @@ const install = async () => {
 }
 // #endregion
 
-// #region Build Command
+// #region Build
 const verifyEnvironment = async () => {
     await verifyCmd("cmake");
     await verifyCmd("ninja");
@@ -256,7 +258,7 @@ const build = async () => {
 }
 // #endregion
 
-// #region Test Command
+// #region Test
 const test = async () => {
     const proc = spawn("node", [TEST_DIR], { shell: true });
     proc.stdout.pipe(process.stdout);
@@ -269,6 +271,7 @@ const clean = async (all = false) => {
     await removeFile(BUILD_DIR, true);
     all && await removeFile(NODE_HEADER_DIR, true);
 }
+// #endregion
 // #endregion
 
 // #region Entry Point
@@ -301,4 +304,3 @@ switch (cmd) {
         process.exit(1);
 }
 // #endregion
-
