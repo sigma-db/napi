@@ -289,7 +289,7 @@ switch (cmd) {
         build();
         break;
     case "test":
-        console.log(`Running "node ${TEST_DIR}"`);
+        console.log(`Running tests...`);
         test();
         break;
     case "clean":
@@ -301,3 +301,4 @@ switch (cmd) {
         process.exit(1);
 }
 // #endregion
+
