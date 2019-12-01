@@ -7,7 +7,7 @@ const { EOL } = require("os");
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
-const { version } = require("../package.json");
+const { version: NAPI_VERSION } = require("../package.json");
 
 // #region Constant Declarations
 // platform specific stuff
@@ -27,20 +27,20 @@ const ROOT = ".";
 const BUILD_DIR = join(ROOT, "build");
 const SRC_DIR = join(ROOT, "src");
 const TEST_DIR = join(ROOT, "test");
+const GIT_DIR = join(ROOT, ".git");
 
-// constants regarding the structure of the downloaded node files
+// downloaded node files
 const NODE_HEADER_DIR = join(ROOT, `node-${NODE_VERSION}`);
 const NODE_INCLUDE_DIR = join(NODE_HEADER_DIR, "include", "node");
 const NODE_LIB_DIR = join(ROOT, "libs");
 const NODE_LIB_FILE = join(NODE_LIB_DIR, "node.lib");
 
 // auto generated files
-const CMAKE_FILE = join(ROOT, "CMakeLists.txt");
 const SRC_FILE = join(SRC_DIR, "module.c");
 const TEST_FILE = join(TEST_DIR, "index.js");
-const GIT_DIR = join(ROOT, ".get");
-const GIT_IGNORE_FILE = join(ROOT, ".gitignore");
+const CMAKE_LISTS_FILE = join(ROOT, "CMakeLists.txt");
 const PACKAGE_JSON_FILE = join(ROOT, "package.json");
+const GITIGNORE_FILE = join(ROOT, ".gitignore");
 // #endregion
 
 // #region Utilities
@@ -73,6 +73,10 @@ const catchFunction = (path, ignore = false) => async (error) => {
     }
     !ignore && process.exit(1);
 };
+
+const abort = (error) => {
+    console.error(error);
+};
 // #endregion
 
 // #region Create Command
@@ -89,7 +93,25 @@ const src = (strings, ...keys) => {
     }
 }
 
-const generateCMakeListsFile = (name, version) => writeFile(CMAKE_FILE, src`
+const MODULE_C = (name) => src`
+    #include <stdlib.h>
+    #include <node_api.h>
+    #include <assert.h>
+
+    napi_value Init(napi_env env, napi_value exports) {
+        napi_value str;
+        napi_status status = napi_create_string_utf8(env, "A project named ${name} is growing here.", NAPI_AUTO_LENGTH, &str);
+        assert(status == napi_ok);
+        return str;
+    }
+
+    NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`;
+
+const TEST_JS = () => src`
+    const val = require("${relative(TEST_DIR, ROOT)}");
+    console.log(val);`;
+
+const CMAKE_LISTS_TXT = (name, version) => src`
     cmake_minimum_required(VERSION ${version})
     project(${name})
 
@@ -105,69 +127,48 @@ const generateCMakeListsFile = (name, version) => writeFile(CMAKE_FILE, src`
         target_link_libraries(\${PROJECT_NAME} \${NODE_LIB})
     endif()
     add_definitions(-DNAPI_VERSION=5)
-    # END N-API specific`
-);
+    # END N-API specific`;
 
-const generateSourceFile = (name) => writeFile(SRC_FILE, src`
-    #include <stdlib.h>
-    #include <node_api.h>
-    #include <assert.h>
-
-    napi_value Init(napi_env env, napi_value exports) {
-        napi_value str;
-        napi_status status = napi_create_string_utf8(env, "A project named ${name} is growing here.", NAPI_AUTO_LENGTH, &str);
-        assert(status == napi_ok);
-        return str;
-    }
-
-    NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`
-);
-
-const generateGitIgnoreFile = () => writeFile(GIT_IGNORE_FILE, src`
-    .vscode
-    ${relative(ROOT, BUILD_DIR)}
-    ${relative(ROOT, TEST_DIR)}
-    ${relative(ROOT, NODE_HEADER_DIR)}
-    ${relative(ROOT, NODE_LIB_DIR)}`
-);
-
-const generatePackageJsonFile = (name) => writeFile(PACKAGE_JSON_FILE, src`
+const PACKAGE_JSON = (name) => src`
     {
         "name": "${name}",
         "version": "0.0.0",
         "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\")}",
         "devDependencies": {
-            "@sigma-db/napi": "^${version}"
+            "@sigma-db/napi": "^${NAPI_VERSION}"
         },
         "scripts": {
-            "install": "napi init && napi build",
-            "test": "node ${TEST_FILE}"
+            "install": "napi init && napi build"
         }
-    }`
-);
+    }`;
 
-const generateTestFile = () => writeFile(TEST_FILE, src`
-    const val = require("..");
-    console.log(val);`
-);
+const GITIGNORE = () => src`
+    .vscode
+    ${relative(ROOT, BUILD_DIR)}
+    ${relative(ROOT, TEST_DIR)}
+    ${relative(ROOT, NODE_HEADER_DIR)}
+    ${relative(ROOT, NODE_LIB_DIR)}`;
 
-const generateGit = () => new Promise(async (resolve) =>
+const initGit = () => new Promise(async (resolve) =>
     await verifyCmd("git", true)
         ? spawn("git", ["init"]).on("exit", code => resolve(code === 0))
         : resolve(false)
 );
 
 const generateProject = async (name, version) => {
-    await mkdir(SRC_DIR).catch(catchFunction());
-    await mkdir(TEST_DIR).catch(catchFunction());
+    await mkdir(SRC_DIR);
+    await mkdir(TEST_DIR);
     await Promise.all([
-        generateCMakeListsFile(name, version).catch(catchFunction(CMAKE_FILE)),
-        generateSourceFile(name).catch(catchFunction(SRC_DIR)),
-        generateTestFile().catch(catchFunction(TEST_DIR)),
-        generateGitIgnoreFile().catch(catchFunction(GIT_IGNORE_FILE)),
-        generatePackageJsonFile(name).catch(catchFunction(PACKAGE_JSON_FILE)),
+        writeFile(CMAKE_LISTS_FILE, CMAKE_LISTS_TXT(name, version)),
+        writeFile(SRC_FILE, MODULE_C(name)),
+        writeFile(TEST_FILE, TEST_JS()),
+        writeFile(PACKAGE_JSON_FILE, PACKAGE_JSON(name)),
     ]);
-    await generateGit().catch(catchFunction(GIT_DIR, true));
+    if (await initGit()) {
+        await writeFile(GITIGNORE_FILE, GITIGNORE());
+    } else {
+        await removeFile(GIT_DIR, true);
+    }
 };
 
 const cMakeVersion = () => new Promise(async (resolve) => {
@@ -187,18 +188,16 @@ const cMakeVersion = () => new Promise(async (resolve) => {
 const create = async (name) => {
     if (name) {
         const prj = join(process.cwd(), name);
-        await mkdir(prj).catch(catchFunction());
+        await mkdir(prj).catch(abort);
         process.chdir(prj);
 
-        const version = await cMakeVersion().catch(catchFunction());
+        const version = await cMakeVersion().catch(abort);
         await Promise.all([
             install(),
             generateProject(name, version)
-        ]).catch(error => {
-            catchFunction(prj)(`Failed to setup project: ${error}`)
-        });
+        ]).catch(abort);
     } else {
-        await catchFunction()("You must specify a project name.");
+        abort("You must specify a project name.");
     }
 }
 // #endregion
@@ -252,7 +251,7 @@ const build = async () => {
 }
 // #endregion
 
-// #region test
+// #region Test Command
 const test = async () => {
     const proc = spawn("node", [TEST_DIR], { shell: true });
     proc.stdout.pipe(process.stdout);
@@ -263,9 +262,7 @@ const test = async () => {
 // #region Clean Command
 const clean = async (all = false) => {
     await removeFile(BUILD_DIR, true);
-    if (all) {
-        await removeFile(NODE_HEADER_DIR, true);
-    }
+    all && await removeFile(NODE_HEADER_DIR, true);
 }
 // #endregion
 
@@ -287,7 +284,7 @@ switch (cmd) {
         build();
         break;
     case "test":
-        console.log(`Running "node ${TEST_FILE}"`);
+        console.log(`Running "node ${TEST_DIR}"`);
         test();
         break;
     case "clean":
