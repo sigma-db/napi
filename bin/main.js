@@ -197,8 +197,10 @@ const create = async (name) => {
 
         await verifyCmd("cmake").catch(abort(name));
         const version = await cMakeVersion().catch(abort(name));
-        await install().catch(abort(name));
-        await generateProject(name, version).catch(abort(name));
+        await Promise.all([
+            install(),
+            generateProject(name, version)
+        ]).catch(abort(name));
     } else {
         abort(name)("You must specify a project name.");
     }
