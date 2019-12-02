@@ -6,31 +6,52 @@ This project eases the process of setting up an environment for developing [nati
 
 Currently, this tool requires `cmake` and `ninja` to be in your `PATH`, as well as a working C/C++ toolchain.
 
-* On Windows, you can use the [Visual Studio Build Tools](https://download.visualstudio.microsoft.com/download/pr/5446351f-19f5-4b09-98c6-a4bfacc732d7/7da4388648c92544c97407c6f052fd6bc0317db407cadab9fdcb328a34d3e317/vs_BuildTools.exe) which includes all required Tools.
+* On Windows, you can use the [Visual Studio Build Tools](https://download.visualstudio.microsoft.com/download/pr/5446351f-19f5-4b09-98c6-a4bfacc732d7/7da4388648c92544c97407c6f052fd6bc0317db407cadab9fdcb328a34d3e317/vs_BuildTools.exe) which includes all required tools.
 * On Linux or UNIX-like environments, make sure to have `cmake`, `ninja`, `clang`/`gcc` and `ld` available in your `PATH`.
 
 ## Installation
 
-Run `npm i -g @sigma-db/napi` to install the CLI globally.
+Run `npm i -g @sigma-db/napi` to install the `napi` CLI globally.
 
 ## Usage
 
-To **create** a new project, simply run `napi new <project_name>`.
-The will create a new folder `<project_name>` in the current directory, so we `cd <project_name>` into that directory.
+Assume we want to create and build a project named `napi-module`.
 
-Now we can run `napi build` to **build** the auto-generated sample project `project_name`.
+To **create** a that project and change into its newly generated directory, simply run `napi new napi-module && cd napi-module`.
 
-To **test** that requiring that native module actually works, run `napi test`.
+To **build** the auto-generated sample project, run `napi build` from within the project directory.
 
+To **test** that requiring your native module actually works, run `napi test` from within the project directory.
 You should see a brief output like
-> A project named `project_name` is growing here.
+> A project named `napi-module` is growing here.
 
-To **clean** any files generated during the build, run `napi clean`.
-To also remove any downloaded headers and static libraries, run `napi clean all`.
+To **clean** any files generated during the build, run `napi clean` from within the project directory.
+In case you also want to remove any downloaded headers and static libraries, run `napi clean all`.
+
+### Note
+
+On Linux (or WSL in Windows), running `./install.sh napi-module` will try to acquire the npm package and create, build, test and clean a sample project.
+
+```bash
+#!/bin/bash
+function check {
+    command -v napi &>/dev/null
+    code=$?
+    if [ code -gt 0 ]; then
+        npm i -g @sigma-db/napi &>/dev/null
+        code=$?
+        if [ code -gt 0 ]; then
+            echo "Could not install napi."
+        fi
+    fi
+    return code
+}
+
+check "napi" && napi new $1 && cd $1 && napi build && napi test && napi clean all
+```
 
 ## Disclaimer
 
-I initiated this project to simplify the setup of my own native module, so don't expect it to run on *any* platform (I'm using Windows and Linux).
+I created this project to simplify creation of native Node.js modules I create, which admittedly mostly takes place on Windows and (occasionally) Linux, so don't expect it to run on *any* platform.
 
-Iäd like to see people contributing to this.
-The current code was written in a single 16h session and might need some refactoring ;)
+The current code was written in a single 16h session and might need quite some refactoring and more user-friendly error-handling — I'd love to see people contributing to this project.
