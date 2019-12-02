@@ -274,7 +274,7 @@ const clean = async (all = false) => {
 // #endregion
 // #endregion
 
-// #region Entry Point
+// #region Main
 const [, , cmd, arg] = process.argv;
 switch (cmd) {
     case "create":
@@ -300,7 +300,7 @@ switch (cmd) {
         clean(arg === "all");
         break;
     default:
-        console.error("None of the possible options 'create', 'install', 'build', or 'clean' were specified.");
+        console.error("None of the possible options 'create <name>', 'install', 'build', or 'clean' were specified.");
         process.exit(1);
 }
 // #endregion
