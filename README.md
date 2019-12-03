@@ -1,4 +1,4 @@
-# Node.js N-API CLI
+# N-API CLI
 
 This project eases the process of setting up an environment for developing [native Node.js modules](https://nodejs.org/dist/latest-v13.x/docs/api/n-api.html) by fetching the correct architecture- and OS-specific header and library files as well as preparing the `CMakeLists.txt` acxcordingly.
 

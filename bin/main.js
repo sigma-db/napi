@@ -1,4 +1,5 @@
 "use strict";
+const { version: NAPI_VERSION } = require("../package.json");
 const { spawn } = require("child_process");
 const { createWriteStream } = require("fs");
 const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
@@ -6,8 +7,8 @@ const { get } = require("https");
 const { EOL } = require("os");
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
+const { promisify } = require("util");
 const { createGunzip: gunzip } = require("zlib");
-const { version: NAPI_VERSION } = require("../package.json");
 
 // #region Constants
 // platform specific stuff
@@ -44,12 +45,18 @@ const GITIGNORE_FILE = join(ROOT, ".gitignore");
 // #endregion
 
 // #region Utilities
-const verifyCmd = (cmd, optional = false) => new Promise((resolve, reject) => {
+const which = (cmd, optional = false) => new Promise((resolve, reject) => {
+    const proc = spawn(WHICH_CMD, [cmd]);
+    createInterface(proc.stdout).on("line", resolve);
+    proc.on("exit", code => optional ? resolve(!(code === 0 && optional)) : reject(`Could not find '${cmd}' in the path.`));
+});
+
+const verify = (cmd, optional = false) => new Promise((resolve, reject) => {
     spawn(WHICH_CMD, [cmd]).on("exit", code => code === 0 ? resolve(true) : optional ? resolve(false) : reject(`Could not find '${cmd}' in the path.`));
 });
 
-const removeFile = async (path, ignoreErrors = true) => {
-    const stats = await lstat(path).catch(catchFunction(null, ignoreErrors));
+const remove = async (path, ignoreErrors = true) => {
+    const stats = await lstat(path).catch(clear(null, ignoreErrors));
     if (!!stats && stats.isFile()) {
         return unlink(path);
     } else if (!!stats && stats.isDirectory()) {
@@ -59,14 +66,14 @@ const removeFile = async (path, ignoreErrors = true) => {
     }
 };
 
-const catchFunction = (path, ignore = false) => async (error) => {
+const clear = (path, ignore = false) => async (error) => {
     !ignore && console.error(error);
     if (!!path) {
         console.log("Cleaning up...");
         if (Array.isArray(path)) {
-            await Promise.all(path.map(p => removeFile(p))).catch(catchFunction());
+            await Promise.all(path.map(p => remove(p))).catch(clear());
         } else if (typeof path === "string") {
-            await removeFile(path).catch(catchFunction());
+            await remove(path).catch(clear());
         } else {
             console.error(`Could not clean ${path}.`);
         }
@@ -74,7 +81,7 @@ const catchFunction = (path, ignore = false) => async (error) => {
     !ignore && process.exit(1);
 };
 
-const abort = (name) => async (error) => {
+const exit = (name) => async (error) => {
     process.chdir("..");
     const prjDir = join(process.cwd(), name);
     await access(prjDir);
@@ -107,7 +114,7 @@ const MODULE_C = (name) => src`
 
     napi_value Init(napi_env env, napi_value exports) {
         napi_value str;
-        napi_status status = napi_create_string_utf8(env, "A project named ${name} is growing here.", NAPI_AUTO_LENGTH, &str);
+        napi_status status = napi_create_string_utf8(env, "A project named \\"${name}\\" is growing here.", NAPI_AUTO_LENGTH, &str);
         assert(status == napi_ok);
         return str;
     }
@@ -145,7 +152,8 @@ const PACKAGE_JSON = (name) => src`
             "@sigma-db/napi": "^${NAPI_VERSION}"
         },
         "scripts": {
-            "install": "napi init && napi build"
+            "install": "napi init && napi build",
+            "test": "napi test"
         }
     }`;
 
@@ -157,7 +165,7 @@ const GITIGNORE = () => src`
     ${relative(ROOT, NODE_LIB_DIR)}`;
 
 const gitInit = () => new Promise(async (resolve) =>
-    await verifyCmd("git", true)
+    await verify("git", true)
         ? spawn("git", ["init"]).on("exit", code => resolve(code === 0))
         : resolve(false)
 );
@@ -174,7 +182,7 @@ const generateProject = async (name, version) => {
     if (await gitInit()) {
         await writeFile(GITIGNORE_FILE, GITIGNORE());
     } else {
-        await removeFile(GIT_DIR, true);
+        await remove(GIT_DIR, true);
     }
 };
 
@@ -194,73 +202,77 @@ const cMakeVersion = () => new Promise((resolve, reject) => {
 const create = async (name) => {
     if (name) {
         const prj = join(process.cwd(), name);
-        await mkdir(prj).catch(abort(name));
+        await mkdir(prj).catch(exit(name));
         process.chdir(prj);
 
-        await verifyCmd("cmake").catch(abort(name));
-        const version = await cMakeVersion().catch(abort(name));
+        await verify("cmake").catch(exit(name));
+        const version = await cMakeVersion().catch(exit(name));
         await Promise.all([
             install(),
             generateProject(name, version)
-        ]).catch(abort(name));
+        ]).catch(exit(name));
     } else {
-        abort(name)("You must specify a project name.");
+        exit(name)("You must specify a project name.");
     }
 }
 // #endregion
 
 // #region Install
-const fetchHeaders = () => new Promise((resolve, reject) => {
-    get(`${DIST_BASE_URL}/node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT))
-        .on("finish", () => resolve()))
-        .on("error", err => reject(err.message));
-});
-
-const fetchLib = () => new Promise((resolve, reject) => {
-    get(`${DIST_BASE_URL}/${NODE_ARCH}/node.lib`, res => res.pipe(createWriteStream(NODE_LIB_FILE)))
+const download = (path, dataHandler) => new Promise((resolve, reject) => {
+    get(`${DIST_BASE_URL}/${path}`, dataHandler)
         .on("finish", () => resolve())
         .on("error", err => reject(err.message));
 });
 
 const install = async () => {
-    await fetchHeaders().catch(catchFunction(NODE_HEADER_DIR));
+    await download(`node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT))).catch(clear(NODE_HEADER_DIR));
     if (IS_WINDOWS) {
-        await mkdir(NODE_LIB_DIR).catch(catchFunction(NODE_HEADER_DIR));
-        await fetchLib().catch(catchFunction([NODE_HEADER_DIR, NODE_LIB_DIR]));
+        await mkdir(NODE_LIB_DIR).catch(clear(NODE_HEADER_DIR));
+        await download(`${NODE_ARCH}/node.lib`, res => res.pipe(createWriteStream(NODE_LIB_FILE))).catch(clear([NODE_HEADER_DIR, NODE_LIB_DIR]));
     }
 }
 // #endregion
 
 // #region Build
-const verifyEnvironment = async () => {
-    await verifyCmd("cmake");
-    await verifyCmd("ninja");
-    await access(NODE_INCLUDE_DIR);
+const spawnAsync = (command, args, options) => new Promise((resolve, reject) => {
+    const proc = spawn(command, args, options);
+    const errs = [];
+    proc.stderr.on("data", (chunk) => errs.push(chunk));
+    proc.on("exit", (code) => {
+        if (code > 0 && errs.length > 0) {
+            reject(errs.join(""));
+        } else if (code > 0) {
+            reject(`Command ${command} finished with exit code ${code}.`);
+        } else {
+            resolve();
+        }
+    });
+});
+
+const build = async (debug = false, generator = "Ninja") => {
+    // check for required tools and dirs
+    await Promise.all([
+        verify("cmake"),
+        verify("ninja"),
+        access(NODE_INCLUDE_DIR)
+    ]);
     if (IS_WINDOWS) {
         await access(NODE_LIB_FILE);
     }
-};
 
-const executeBuild = (debug = false, generator = "Ninja") => new Promise((resolve, reject) => {
-    const params = `-D CMAKE_BUILD_TYPE=${debug ? "Debug" : "Release"} -G ${generator}`;
-    const cmd = [
-        "mkdir build",
-        "cd build",
-        `cmake ${params} ..`,
-        "ninja"
-    ].join(" && ");
-    spawn(cmd, { shell: true }).on("exit", code => code == 0 ? resolve() : reject(`Build process exited with error code ${code}.`));
-});
-
-const build = async () => {
-    await verifyEnvironment().catch(catchFunction());
-    await executeBuild().catch(catchFunction(BUILD_DIR));
+    // run build
+    await mkdir(BUILD_DIR, { recursive: true });
+    process.chdir(BUILD_DIR);
+    await spawnAsync("cmake", [`-D CMAKE_BUILD_TYPE=${debug ? "Debug" : "Release"}`, `-G ${generator}`, ".."], { shell: true });
+    await spawnAsync("ninja", { shell: true });
+    process.chdir("..");
 }
 // #endregion
 
 // #region Test
 const test = async () => {
-    const proc = spawn("node", [TEST_DIR], { shell: true });
+    const node = await which("node");
+    const proc = spawn(node, [TEST_DIR]);
     proc.stdout.pipe(process.stdout);
     proc.stderr.pipe(process.stderr);
 };
@@ -268,39 +280,38 @@ const test = async () => {
 
 // #region Clean Command
 const clean = async (all = false) => {
-    await removeFile(BUILD_DIR, true);
-    all && await removeFile(NODE_HEADER_DIR, true);
+    await remove(BUILD_DIR, true);
+    all && await remove(NODE_HEADER_DIR, true);
 }
 // #endregion
 // #endregion
 
 // #region Main
-const [, , cmd, arg] = process.argv;
-switch (cmd) {
-    case "create":
-    case "new":
-        console.log(`Generating project...`);
-        create(arg);
-        break;
-    case "install":
-    case "init":
-        console.log("Fetching Node.js dependencies...");
-        install();
-        break;
-    case "build":
-        console.log("Building project...");
-        build();
-        break;
-    case "test":
-        console.log(`Running tests...`);
-        test();
-        break;
-    case "clean":
-        console.log("Cleaning up...");
-        clean(arg === "all");
-        break;
-    default:
-        console.error("None of the possible options 'create <name>', 'install', 'build', or 'clean' were specified.");
-        process.exit(1);
-}
+(async function main(cmd, arg) {
+    switch (cmd) {
+        case "new":
+            console.log(`Generating project...`);
+            await create(arg);
+            break;
+        case "init":
+            console.log("Fetching Node.js dependencies...");
+            await install();
+            break;
+        case "build":
+            console.log("Building project...");
+            await build().catch(clear(BUILD_DIR));
+            break;
+        case "test":
+            console.log(`Running tests...`);
+            await test();
+            break;
+        case "clean":
+            console.log("Cleaning up...");
+            await clean(arg === "all");
+            break;
+        default:
+            console.error("None of the possible options 'create <name>', 'install', 'build', or 'clean' were specified.");
+            process.exit(1);
+    }
+})(process.argv[2], process.argv[3]);
 // #endregion
