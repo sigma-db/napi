@@ -1,4 +1,3 @@
-const { resolve } = require("path");
 const { BannerPlugin } = require("webpack");
 
 module.exports = {
@@ -6,7 +5,7 @@ module.exports = {
     target: "node",
     mode: "production",
     output: {
-        path: resolve(__dirname, "..", ".."),
+        path: __dirname,
         filename: 'index.js'
     },
     plugins: [
