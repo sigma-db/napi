@@ -154,7 +154,6 @@ const PACKAGE_JSON = (name) => src`
 const GITIGNORE = () => src`
     .vscode
     ${relative(ROOT, BUILD_DIR)}
-    ${relative(ROOT, TEST_DIR)}
     ${relative(ROOT, NODE_HEADER_DIR)}
     ${relative(ROOT, NODE_LIB_DIR)}
     ${relative(ROOT, NAPI_CMAKE_FILE)}`;
