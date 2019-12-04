@@ -40,6 +40,7 @@ const NODE_LIB_FILE = join(NODE_LIB_DIR, "node.lib");
 const SRC_FILE = join(SRC_DIR, "module.c");
 const TEST_FILE = join(TEST_DIR, "index.js");
 const CMAKE_LISTS_FILE = join(ROOT, "CMakeLists.txt");
+const NAPI_CMAKE_FILE = join(ROOT, "napi.cmake");
 const PACKAGE_JSON_FILE = join(ROOT, "package.json");
 const GITIGNORE_FILE = join(ROOT, ".gitignore");
 // #endregion
@@ -71,7 +72,7 @@ const clear = (path, ignore = false) => async (error) => {
     if (!!path) {
         console.log("Cleaning up...");
         if (Array.isArray(path)) {
-            await Promise.all(path.map(p => remove(p))).catch(clear());
+            await Promise.all(path.map(p => remove(p, true))).catch(clear());
         } else if (typeof path === "string") {
             await remove(path).catch(clear());
         } else {
@@ -134,14 +135,7 @@ const CMAKE_LISTS_TXT = (name, version) => src`
     add_library(\${PROJECT_NAME} SHARED "src/module.c")
     set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
 
-    # BEGIN N-API specific
-    include_directories(node-${NODE_VERSION}/include/node)
-    if(WIN32)
-        find_library(NODE_LIB node libs)
-        target_link_libraries(\${PROJECT_NAME} \${NODE_LIB})
-    endif()
-    add_definitions(-DNAPI_VERSION=5)
-    # END N-API specific`;
+    include(${NAPI_CMAKE_FILE})`;
 
 const PACKAGE_JSON = (name) => src`
     {
@@ -162,7 +156,8 @@ const GITIGNORE = () => src`
     ${relative(ROOT, BUILD_DIR)}
     ${relative(ROOT, TEST_DIR)}
     ${relative(ROOT, NODE_HEADER_DIR)}
-    ${relative(ROOT, NODE_LIB_DIR)}`;
+    ${relative(ROOT, NODE_LIB_DIR)}
+    ${relative(ROOT, NAPI_CMAKE_FILE)}`;
 
 const gitInit = () => new Promise(async (resolve) =>
     await verify("git", true)
@@ -202,34 +197,43 @@ const cMakeVersion = () => new Promise((resolve, reject) => {
 const create = async (name) => {
     if (name) {
         const prj = join(process.cwd(), name);
-        await mkdir(prj).catch(exit(name));
+        await mkdir(prj);
         process.chdir(prj);
 
-        await verify("cmake").catch(exit(name));
-        const version = await cMakeVersion().catch(exit(name));
+        await verify("cmake");
+        const version = await cMakeVersion();
         await Promise.all([
-            install(),
+            init(),
             generateProject(name, version)
-        ]).catch(exit(name));
+        ]);
     } else {
-        exit(name)("You must specify a project name.");
+        throw new Error("You must specify a project name.");
     }
 }
 // #endregion
 
-// #region Install
+// #region Init
+const NAPI_CMAKE = () => src`
+    include_directories(node-${NODE_VERSION}/include/node)
+    if(WIN32)
+        find_library(NODE_LIB node libs)
+        target_link_libraries(\${PROJECT_NAME} \${NODE_LIB})
+    endif()
+    add_definitions(-DNAPI_VERSION=5)`;
+
 const download = (path, dataHandler) => new Promise((resolve, reject) => {
     get(`${DIST_BASE_URL}/${path}`, dataHandler)
         .on("finish", () => resolve())
         .on("error", err => reject(err.message));
 });
 
-const install = async () => {
-    await download(`node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT))).catch(clear(NODE_HEADER_DIR));
+const init = async () => {
+    await download(`node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT)));
     if (IS_WINDOWS) {
-        await mkdir(NODE_LIB_DIR).catch(clear(NODE_HEADER_DIR));
-        await download(`${NODE_ARCH}/node.lib`, res => res.pipe(createWriteStream(NODE_LIB_FILE))).catch(clear([NODE_HEADER_DIR, NODE_LIB_DIR]));
+        await mkdir(NODE_LIB_DIR);
+        await download(`${NODE_ARCH}/node.lib`, res => res.pipe(createWriteStream(NODE_LIB_FILE)));
     }
+    await writeFile(NAPI_CMAKE_FILE, NAPI_CMAKE());
 }
 // #endregion
 
@@ -291,11 +295,11 @@ const clean = async (all = false) => {
     switch (cmd) {
         case "new":
             console.log(`Generating project...`);
-            await create(arg);
+            await create(arg).catch(exit(arg));
             break;
         case "init":
             console.log("Fetching Node.js dependencies...");
-            await install();
+            await init().catch(clear([NODE_HEADER_DIR, NODE_LIB_DIR, BUILD_DIR, NAPI_CMAKE_FILE], true));;
             break;
         case "build":
             console.log("Building project...");
