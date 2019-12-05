@@ -1,5 +1,6 @@
 "use strict";
 const { version: NAPI_VERSION } = require("../package.json");
+const { ok } = require("assert").strict;
 const { spawn } = require("child_process");
 const { createWriteStream } = require("fs");
 const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
@@ -146,8 +147,7 @@ const PACKAGE_JSON = (name) => src`
             "@sigma-db/napi": "^${NAPI_VERSION}"
         },
         "scripts": {
-            "install": "napi init && napi build",
-            "test": "napi test"
+            "install": "napi init && napi build"
         }
     }`;
 
@@ -164,22 +164,6 @@ const gitInit = () => new Promise(async (resolve) =>
         : resolve(false)
 );
 
-const generateProject = async (name, version) => {
-    await mkdir(SRC_DIR);
-    await mkdir(TEST_DIR);
-    await Promise.all([
-        writeFile(CMAKE_LISTS_FILE, CMAKE_LISTS_TXT(name, version)),
-        writeFile(SRC_FILE, MODULE_C(name)),
-        writeFile(TEST_FILE, TEST_JS()),
-        writeFile(PACKAGE_JSON_FILE, PACKAGE_JSON(name)),
-    ]);
-    if (await gitInit()) {
-        await writeFile(GITIGNORE_FILE, GITIGNORE());
-    } else {
-        await remove(GIT_DIR, true);
-    }
-};
-
 const cMakeVersion = () => new Promise((resolve, reject) => {
     let done = false;
     createInterface(spawn("cmake", ["--version"]).stdout)
@@ -194,19 +178,31 @@ const cMakeVersion = () => new Promise((resolve, reject) => {
 });
 
 const create = async (name) => {
-    if (name) {
-        const prj = join(process.cwd(), name);
-        await mkdir(prj);
-        process.chdir(prj);
+    ok(!!name, "You must specify a project name.");
 
-        await verify("cmake");
-        const version = await cMakeVersion();
-        await Promise.all([
-            init(),
-            generateProject(name, version)
-        ]);
+    // verify tools and versions
+    await verify("cmake");
+    await verify("ninja");
+    const version = await cMakeVersion();
+
+    // build folder structure
+    process.chdir(join(ROOT, name));
+    await mkdir(SRC_DIR);
+    await mkdir(TEST_DIR);
+
+    // generate default files
+    await Promise.all([
+        writeFile(CMAKE_LISTS_FILE, CMAKE_LISTS_TXT(name, version)),
+        writeFile(SRC_FILE, MODULE_C(name)),
+        writeFile(TEST_FILE, TEST_JS()),
+        writeFile(PACKAGE_JSON_FILE, PACKAGE_JSON(name)),
+    ]);
+
+    // optionally init git
+    if (await gitInit()) {
+        await writeFile(GITIGNORE_FILE, GITIGNORE());
     } else {
-        throw new Error("You must specify a project name.");
+        await remove(GIT_DIR, true);
     }
 }
 // #endregion
@@ -298,7 +294,7 @@ const clean = async (all = false) => {
             break;
         case "init":
             console.log("Fetching Node.js dependencies...");
-            await init().catch(clear([NODE_HEADER_DIR, NODE_LIB_DIR, BUILD_DIR, NAPI_CMAKE_FILE], true));;
+            await init().catch(clear([NODE_HEADER_DIR, NODE_LIB_DIR, BUILD_DIR, NAPI_CMAKE_FILE], true));
             break;
         case "build":
             console.log("Building project...");

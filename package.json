@@ -17,11 +17,12 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=13.0.0"
+    "node": ">=13.1.0"
   },
   "bin": "index.js",
   "scripts": {
-    "prepare": "webpack"
+    "prepare": "webpack",
+    "publish": "node ./scripts/clean.js"
   },
   "devDependencies": {
     "tar-fs": "^2.0.0",
