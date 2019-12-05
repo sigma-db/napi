@@ -186,6 +186,7 @@ const create = async (name) => {
     const version = await cMakeVersion();
 
     // build folder structure
+    await mkdir(join(ROOT, name))
     process.chdir(join(ROOT, name));
     await mkdir(SRC_DIR);
     await mkdir(TEST_DIR);
