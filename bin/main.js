@@ -23,7 +23,7 @@ const WHICH_CMD = IS_WINDOWS ? join(process.env.WINDIR, "System32", "where.exe")
 const DIST_BASE_URL = `https://nodejs.org/dist/${NODE_VERSION}`;
 
 // the directory we will be working in
-const ROOT = ".";
+const ROOT = process.cwd();
 
 // generated dirs
 const BUILD_DIR = join(ROOT, "build");
