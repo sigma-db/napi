@@ -1,5 +1,5 @@
 "use strict";
-const { version: NAPI_VERSION } = require("../package.json");
+const { version: PACKAGE_VERSION } = require("../package.json");
 const { ok } = require("assert").strict;
 const { spawn } = require("child_process");
 const { createWriteStream } = require("fs");
@@ -8,11 +8,11 @@ const { get } = require("https");
 const { EOL } = require("os");
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
-const { promisify } = require("util");
 const { createGunzip: gunzip } = require("zlib");
 
 // #region Constants
 // platform specific stuff
+const { node: NODE_SEMVER_VERSION, napi: NAPI_VERSION } = process.versions;
 const NODE_VERSION = process.version;
 const IS_WINDOWS = process.platform === "win32"
 const NODE_ARCH = process.arch === "x64" ? "win-x64" : "win-x86";
@@ -23,7 +23,7 @@ const WHICH_CMD = IS_WINDOWS ? join(process.env.WINDIR, "System32", "where.exe")
 const DIST_BASE_URL = `https://nodejs.org/dist/${NODE_VERSION}`;
 
 // the directory we will be working in
-const ROOT = process.cwd();
+const ROOT = ".";
 
 // generated dirs
 const BUILD_DIR = join(ROOT, "build");
@@ -84,10 +84,14 @@ const clear = (path, ignore = false) => async (error) => {
 };
 
 const exit = (name) => async (error) => {
-    process.chdir("..");
+    process.chdir(ROOT);
     const prjDir = join(process.cwd(), name);
-    await access(prjDir);
-    await rmdir(prjDir);
+    try {
+        const stats = lstat(path);
+        if (!!stats && stats.isDirectory()) {
+            await rmdir(prjDir);
+        }
+    } catch { }
     console.error(error);
     process.exit(1);
 };
@@ -144,7 +148,10 @@ const PACKAGE_JSON = (name) => src`
         "version": "0.0.0",
         "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\")}",
         "devDependencies": {
-            "@sigma-db/napi": "^${NAPI_VERSION}"
+            "@sigma-db/napi": "^${PACKAGE_VERSION}"
+        },
+        "engines": {
+            "node": ">=${NODE_SEMVER_VERSION}"
         },
         "scripts": {
             "install": "napi init && napi build"
@@ -186,7 +193,7 @@ const create = async (name) => {
     const version = await cMakeVersion();
 
     // build folder structure
-    await mkdir(join(ROOT, name))
+    await mkdir(join(ROOT, name));
     process.chdir(join(ROOT, name));
     await mkdir(SRC_DIR);
     await mkdir(TEST_DIR);
@@ -215,7 +222,7 @@ const NAPI_CMAKE = () => src`
         find_library(NODE_LIB node libs)
         target_link_libraries(\${PROJECT_NAME} \${NODE_LIB})
     endif()
-    add_definitions(-DNAPI_VERSION=5)`;
+    add_definitions(-DNAPI_VERSION=${NAPI_VERSION})`;
 
 const download = (path, dataHandler) => new Promise((resolve, reject) => {
     get(`${DIST_BASE_URL}/${path}`, dataHandler)
