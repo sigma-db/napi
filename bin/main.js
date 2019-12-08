@@ -281,7 +281,7 @@ const clean = async (all = false) => {
 (async function main(cmd, arg) {
     switch (cmd) {
         case "new":
-            ok(!!name, "You must specify a project name.");
+            ok(!!arg, "You must specify a project name.");
             console.log("Generating project...");
             await create(arg).catch(exit(arg));
             break;
