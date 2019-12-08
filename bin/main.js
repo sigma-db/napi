@@ -291,7 +291,7 @@ const clean = async (all = false) => {
             break;
         case "build":
             const debug = !!arg && arg.toLowerCase() === "debug";
-            console.log("Building project in debug mode...");
+            console.log(`Building project in ${debug ? "debug" : "release"} mode...`);
             await build(debug).catch(clear(BUILD_DIR));
             break;
         case "test":
