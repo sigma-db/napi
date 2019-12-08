@@ -98,7 +98,7 @@ const exit = (name) => async (error) => {
 
 const download = (path, dataHandler) => new Promise((resolve, reject) => {
     get(`${DIST_BASE_URL}/${path}`, dataHandler)
-        .on("finish", () => resolve())
+        .on("finish", resolve)
         .on("error", err => reject(err.message));
 });
 
