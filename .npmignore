@@ -1,7 +1,9 @@
 .vscode
 bin
 node_modules
+scripts
 .gitignore
 .npmignore
 package-lock.json
 webpack.config.js
+README.md

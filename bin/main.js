@@ -95,75 +95,27 @@ const exit = (name) => async (error) => {
     console.error(error);
     process.exit(1);
 };
-// #endregion
 
-// #region Commands
+const download = (path, dataHandler) => new Promise((resolve, reject) => {
+    get(`${DIST_BASE_URL}/${path}`, dataHandler)
+        .on("finish", () => resolve())
+        .on("error", err => reject(err.message));
+});
 
-// #region Create
-const src = (strings, ...keys) => {
-    let lines = strings.reduce((res, str, idx) => `${res}${keys[idx - 1]}${str}`).split("\n");
-    if (lines.length) {
-        let depth = 0;
-        while (!lines[0]) lines.shift();
-        while (!lines[lines.length - 1]) lines.pop();
-        while (lines[0].charAt(depth) === " ") depth++;
-        return lines.map(str => str.substring(depth)).join(EOL);
-    } else {
-        return "";
-    }
-}
-
-const MODULE_C = (name) => src`
-    #include <stdlib.h>
-    #include <node_api.h>
-    #include <assert.h>
-
-    napi_value Init(napi_env env, napi_value exports) {
-        napi_value str;
-        napi_status status = napi_create_string_utf8(env, "A project named \\"${name}\\" is growing here.", NAPI_AUTO_LENGTH, &str);
-        assert(status == napi_ok);
-        return str;
-    }
-
-    NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`;
-
-const TEST_JS = () => src`
-    const val = require("${relative(TEST_DIR, ROOT)}");
-    console.log(val);`;
-
-const CMAKE_LISTS_TXT = (name, version) => src`
-    cmake_minimum_required(VERSION ${version})
-    project(${name})
-
-    set(CMAKE_C_STANDARD 99)
-
-    add_library(\${PROJECT_NAME} SHARED "src/module.c")
-    set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
-
-    include(${NAPI_CMAKE_FILE})`;
-
-const PACKAGE_JSON = (name) => src`
-    {
-        "name": "${name}",
-        "version": "0.0.0",
-        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\")}",
-        "devDependencies": {
-            "@sigma-db/napi": "^${PACKAGE_VERSION}"
-        },
-        "engines": {
-            "node": ">=${NODE_SEMVER_VERSION}"
-        },
-        "scripts": {
-            "install": "napi init && napi build"
+const spawnAsync = (command, args, options) => new Promise((resolve, reject) => {
+    const proc = spawn(command, args, options);
+    const errs = [];
+    proc.stderr.on("data", (chunk) => errs.push(chunk));
+    proc.on("exit", (code) => {
+        if (code > 0 && errs.length > 0) {
+            reject(errs.join(""));
+        } else if (code > 0) {
+            reject(`Command ${command} finished with exit code ${code}.`);
+        } else {
+            resolve();
         }
-    }`;
-
-const GITIGNORE = () => src`
-    .vscode
-    ${relative(ROOT, BUILD_DIR)}
-    ${relative(ROOT, NODE_HEADER_DIR)}
-    ${relative(ROOT, NODE_LIB_DIR)}
-    ${relative(ROOT, NAPI_CMAKE_FILE)}`;
+    });
+});
 
 const gitInit = () => new Promise(async (resolve) =>
     await verify("git", true)
@@ -184,9 +136,84 @@ const cMakeVersion = () => new Promise((resolve, reject) => {
         .on("close", () => !done && reject(`Could not parse your "cmake" version.`));
 });
 
-const create = async (name) => {
-    ok(!!name, "You must specify a project name.");
+const src = (strings, ...keys) => {
+    let lines = strings.reduce((res, str, idx) => `${res}${keys[idx - 1]}${str}`).split("\n");
+    if (lines.length) {
+        let depth = 0;
+        while (!lines[0]) lines.shift();
+        while (!lines[lines.length - 1]) lines.pop();
+        while (lines[0].charAt(depth) === " ") depth++;
+        return lines.map(str => str.substring(depth)).join(EOL);
+    } else {
+        return "";
+    }
+}
+// #endregion
 
+// #region Generated Files
+const MODULE_C = (name) => src`
+    #include <stdlib.h>
+    #include <node_api.h>
+    #include <assert.h>
+
+    napi_value Init(napi_env env, napi_value exports) {
+        napi_value str;
+        napi_status status = napi_create_string_utf8(env, "A project named \\"${name}\\" is growing here.", NAPI_AUTO_LENGTH, &str);
+        assert(status == napi_ok);
+        return str;
+    }
+
+    NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)`;
+
+const CMAKE_LISTS_TXT = (name, version) => src`
+    cmake_minimum_required(VERSION ${version})
+    project(${name})
+
+    set(CMAKE_C_STANDARD 99)
+
+    add_library(\${PROJECT_NAME} SHARED "src/module.c")
+    set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
+
+    include(${NAPI_CMAKE_FILE})`;
+
+const NAPI_CMAKE = () => src`
+    include_directories(node-${NODE_VERSION}/include/node)
+    if(WIN32)
+        find_library(NODE_LIB node libs)
+        target_link_libraries(\${PROJECT_NAME} \${NODE_LIB})
+    endif()
+    add_definitions(-DNAPI_VERSION=${NAPI_VERSION})`;
+
+const PACKAGE_JSON = (name) => src`
+    {
+        "name": "${name}",
+        "version": "0.0.0",
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\")}",
+        "devDependencies": {
+            "@sigma-db/napi": "^${PACKAGE_VERSION}"
+        },
+        "engines": {
+            "node": ">=${NODE_SEMVER_VERSION}"
+        },
+        "scripts": {
+            "install": "napi init && napi build"
+        }
+    }`;
+
+const TEST_JS = () => src`
+    const val = require("${relative(TEST_DIR, ROOT)}");
+    console.log(val);`;
+
+const GITIGNORE = () => src`
+    .vscode
+    ${relative(ROOT, BUILD_DIR)}
+    ${relative(ROOT, NODE_HEADER_DIR)}
+    ${relative(ROOT, NODE_LIB_DIR)}
+    ${relative(ROOT, NAPI_CMAKE_FILE)}`;
+// #endregion
+
+// #region Commands
+const create = async (name) => {
     // verify tools and versions
     await verify("cmake");
     await verify("ninja");
@@ -207,28 +234,8 @@ const create = async (name) => {
     ]);
 
     // optionally init git
-    if (await gitInit()) {
-        await writeFile(GITIGNORE_FILE, GITIGNORE());
-    } else {
-        await remove(GIT_DIR, true);
-    }
+    await (gitInit() ? writeFile(GITIGNORE_FILE, GITIGNORE()) : remove(GIT_DIR, true));
 }
-// #endregion
-
-// #region Init
-const NAPI_CMAKE = () => src`
-    include_directories(node-${NODE_VERSION}/include/node)
-    if(WIN32)
-        find_library(NODE_LIB node libs)
-        target_link_libraries(\${PROJECT_NAME} \${NODE_LIB})
-    endif()
-    add_definitions(-DNAPI_VERSION=${NAPI_VERSION})`;
-
-const download = (path, dataHandler) => new Promise((resolve, reject) => {
-    get(`${DIST_BASE_URL}/${path}`, dataHandler)
-        .on("finish", () => resolve())
-        .on("error", err => reject(err.message));
-});
 
 const init = async () => {
     await download(`node-${NODE_VERSION}-headers.tar.gz`, res => res.pipe(gunzip()).pipe(untar(ROOT)));
@@ -238,23 +245,6 @@ const init = async () => {
     }
     await writeFile(NAPI_CMAKE_FILE, NAPI_CMAKE());
 }
-// #endregion
-
-// #region Build
-const spawnAsync = (command, args, options) => new Promise((resolve, reject) => {
-    const proc = spawn(command, args, options);
-    const errs = [];
-    proc.stderr.on("data", (chunk) => errs.push(chunk));
-    proc.on("exit", (code) => {
-        if (code > 0 && errs.length > 0) {
-            reject(errs.join(""));
-        } else if (code > 0) {
-            reject(`Command ${command} finished with exit code ${code}.`);
-        } else {
-            resolve();
-        }
-    });
-});
 
 const build = async (debug = false, generator = "Ninja") => {
     // check for required tools and dirs
@@ -274,30 +264,25 @@ const build = async (debug = false, generator = "Ninja") => {
     await spawnAsync("ninja", { shell: true });
     process.chdir("..");
 }
-// #endregion
 
-// #region Test
 const test = async () => {
     const node = await which("node");
     const proc = spawn(node, [TEST_DIR]);
     proc.stdout.pipe(process.stdout);
     proc.stderr.pipe(process.stderr);
 };
-// #endregion
 
-// #region Clean Command
 const clean = async (all = false) => {
     await remove(BUILD_DIR, true);
     all && await remove(NODE_HEADER_DIR, true);
 }
 // #endregion
-// #endregion
 
-// #region Main
 (async function main(cmd, arg) {
     switch (cmd) {
         case "new":
-            console.log(`Generating project...`);
+            ok(!!name, "You must specify a project name.");
+            console.log("Generating project...");
             await create(arg).catch(exit(arg));
             break;
         case "init":
@@ -305,11 +290,12 @@ const clean = async (all = false) => {
             await init().catch(clear([NODE_HEADER_DIR, NODE_LIB_DIR, BUILD_DIR, NAPI_CMAKE_FILE], true));
             break;
         case "build":
-            console.log("Building project...");
-            await build().catch(clear(BUILD_DIR));
+            const debug = !!arg && arg.toLowerCase() === "debug";
+            console.log("Building project in debug mode...");
+            await build(debug).catch(clear(BUILD_DIR));
             break;
         case "test":
-            console.log(`Running tests...`);
+            console.log("Running tests...");
             await test();
             break;
         case "clean":
@@ -321,4 +307,3 @@ const clean = async (all = false) => {
             process.exit(1);
     }
 })(process.argv[2], process.argv[3]);
-// #endregion
