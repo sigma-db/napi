@@ -1,5 +1,8 @@
 # N-API CLI
 
+[![NPM](https://img.shields.io/npm/v/@sigma-db/napi)](https://www.npmjs.com/package/@sigma-db/napi)
+![node version](https://img.shields.io/node/v/@sigma-db/napi)
+
 This project eases the process of setting up an environment for developing [native Node.js modules](https://nodejs.org/dist/latest-v13.x/docs/api/n-api.html) by fetching the correct architecture- and OS-specific header and library files as well as preparing the `CMakeLists.txt` acxcordingly.
 
 ## Prerequisites
@@ -15,43 +18,22 @@ Run `npm i -g @sigma-db/napi` to install the `napi` CLI globally.
 
 ## Usage
 
-Assume we want to create and build a project named `napi-module`.
+Assume we want to create and build a project named `native`.
 
-To **create** a that project and change into its newly generated directory, simply run `napi new napi-module && cd napi-module`.
+1. **create** the project and change into its directory by running `napi new native && cd native`.
 
-To **build** the auto-generated sample project, run `napi build` from within the project directory.
+2. **initialise** the project by running `napi init` from within the project directory to automatically download the appropriate header and static library files.
 
-To **test** that requiring your native module actually works, run `napi test` from within the project directory.
-You should see a brief output like
-> A project named `napi-module` is growing here.
+3. **build** the project by running `napi build` from within the project directory.
 
-To **clean** any files generated during the build, run `napi clean` from within the project directory.
-In case you also want to remove any downloaded headers and static libraries, run `napi clean all`.
+4. **test** that requiring your native module actually works by running `napi test` from within the project directory. You should see an output like `A project named "native" is growing here.`
 
-### Note
+5. **clean** any files generated during the build by running `napi clean` from within the project directory. Note that doing this will make `CMake` run again on the next build, considerably increasing the build time of the next build.
 
-On Linux (or WSL in Windows), running `./install.sh napi-module` will try to acquire the npm package and create, build, test and clean a sample project.
+### Changing the Node.js version
 
-```bash
-#!/bin/bash
-function check {
-    command -v napi &>/dev/null
-    code=$?
-    if [ code -gt 0 ]; then
-        npm i -g @sigma-db/napi &>/dev/null
-        code=$?
-        if [ code -gt 0 ]; then
-            echo "Could not install napi."
-        fi
-    fi
-    return code
-}
-
-check "napi" && napi new $1 && cd $1 && napi build && napi test && napi clean all
-```
+If you happen to change to version of Node.js, you will also require new header and static library files. In that case, run `napi clean all`, which will delete any previously downloaded header and library files, as well as any built files.
 
 ## Disclaimer
 
-I created this project to simplify creation of native Node.js modules I create, which admittedly mostly takes place on Windows and (occasionally) Linux, so don't expect it to run on *any* platform.
-
-The current code was written in a single 16h session and might need quite some refactoring and more user-friendly error-handling — I'd love to see people contributing to this project.
+The current code was written in a single 16h session and might need quite some refactoring and more user-friendly error-handling — I'd love to see people contributing.
