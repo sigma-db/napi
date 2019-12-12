@@ -6,7 +6,6 @@ const { createWriteStream } = require("fs");
 const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
 const { get } = require("https");
 const { EOL } = require("os");
-const { join, relative } = require("path");
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
@@ -17,6 +16,7 @@ const { node: NODE_SEMVER_VERSION, napi: NAPI_VERSION } = process.versions;
 const NODE_VERSION = process.version;
 const IS_WINDOWS = process.platform === "win32"
 const NODE_ARCH = process.arch === "x64" ? "win-x64" : "win-x86";
+const { join, relative } = IS_WINDOWS ? require("path").win32 : require("path");
 const WHICH_CMD = IS_WINDOWS ? join(process.env.WINDIR, "System32", "where.exe") : "/usr/bin/which";
 
 // base URL for all node binary distribution and header files
@@ -171,7 +171,7 @@ const CMAKE_LISTS_TXT = (name, version) => src`
 
     set(CMAKE_C_STANDARD 99)
 
-    add_library(\${PROJECT_NAME} SHARED ${SRC_FILE})
+    add_library(\${PROJECT_NAME} SHARED "src/module.cpp")
     set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
 
     include(${NAPI_CMAKE_FILE})`;
@@ -188,7 +188,7 @@ const PACKAGE_JSON = (name) => src`
     {
         "name": "${name}",
         "version": "0.0.0",
-        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}",
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\")}",
         "devDependencies": {
             "@sigma-db/napi": "^${PACKAGE_VERSION}"
         },
