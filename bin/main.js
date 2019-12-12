@@ -6,6 +6,7 @@ const { createWriteStream } = require("fs");
 const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
 const { get } = require("https");
 const { EOL } = require("os");
+const { join, relative } = require("path");
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
@@ -16,7 +17,6 @@ const { node: NODE_SEMVER_VERSION, napi: NAPI_VERSION } = process.versions;
 const NODE_VERSION = process.version;
 const IS_WINDOWS = process.platform === "win32"
 const NODE_ARCH = process.arch === "x64" ? "win-x64" : "win-x86";
-const { join, relative } = IS_WINDOWS ? require("path").win32 : require("path");
 const WHICH_CMD = IS_WINDOWS ? join(process.env.WINDIR, "System32", "where.exe") : "/usr/bin/which";
 
 // base URL for all node binary distribution and header files
@@ -38,7 +38,7 @@ const NODE_LIB_DIR = join(ROOT, "libs");
 const NODE_LIB_FILE = join(NODE_LIB_DIR, "node.lib");
 
 // auto generated files
-const SRC_FILE = join(SRC_DIR, "module.c");
+const SRC_FILE = join(SRC_DIR, "module.cpp");
 const TEST_FILE = join(TEST_DIR, "index.js");
 const CMAKE_LISTS_FILE = join(ROOT, "CMakeLists.txt");
 const NAPI_CMAKE_FILE = join(ROOT, "napi.cmake");
@@ -54,7 +54,7 @@ const which = (cmd, optional = false) => new Promise((resolve, reject) => {
 });
 
 const verify = (cmd, optional = false) => new Promise((resolve, reject) => {
-    spawn(WHICH_CMD, [cmd]).on("exit", code => code === 0 ? resolve(true) : optional ? resolve(false) : reject(`Could not find '${cmd}' in the path.`));
+    spawn(WHICH_CMD, [cmd]).on("exit", code => optional ? resolve(!(code === 0 && optional)) : reject(`Could not find '${cmd}' in the path.`));
 });
 
 const remove = async (path, ignoreErrors = true) => {
@@ -117,13 +117,13 @@ const spawnAsync = (command, args, options) => new Promise((resolve, reject) => 
     });
 });
 
-const gitInit = () => new Promise(async (resolve) =>
+const initGit = () => new Promise(async (resolve) => {
     await verify("git", true)
         ? spawn("git", ["init"]).on("exit", code => resolve(code === 0))
         : resolve(false)
-);
+});
 
-const cMakeVersion = () => new Promise((resolve, reject) => {
+const getCMakeVersion = () => new Promise((resolve, reject) => {
     let done = false;
     createInterface(spawn("cmake", ["--version"]).stdout)
         .on("line", line => {
@@ -171,7 +171,7 @@ const CMAKE_LISTS_TXT = (name, version) => src`
 
     set(CMAKE_C_STANDARD 99)
 
-    add_library(\${PROJECT_NAME} SHARED "src/module.c")
+    add_library(\${PROJECT_NAME} SHARED ${SRC_FILE})
     set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
 
     include(${NAPI_CMAKE_FILE})`;
@@ -188,7 +188,7 @@ const PACKAGE_JSON = (name) => src`
     {
         "name": "${name}",
         "version": "0.0.0",
-        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\")}",
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}",
         "devDependencies": {
             "@sigma-db/napi": "^${PACKAGE_VERSION}"
         },
@@ -217,7 +217,7 @@ const create = async (name) => {
     // verify tools and versions
     await verify("cmake");
     await verify("ninja");
-    const version = await cMakeVersion();
+    const version = await getCMakeVersion();
 
     // build folder structure
     await mkdir(join(ROOT, name));
@@ -234,7 +234,7 @@ const create = async (name) => {
     ]);
 
     // optionally init git
-    await (gitInit() ? writeFile(GITIGNORE_FILE, GITIGNORE()) : remove(GIT_DIR, true));
+    await (initGit() ? writeFile(GITIGNORE_FILE, GITIGNORE()) : remove(GIT_DIR, true));
 }
 
 const init = async () => {
