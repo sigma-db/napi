@@ -28,7 +28,6 @@ const ROOT = ".";
 // generated dirs
 const BUILD_DIR = join(ROOT, "build");
 const SRC_DIR = join(ROOT, "src");
-const TEST_DIR = join(ROOT, "test");
 const GIT_DIR = join(ROOT, ".git");
 
 // downloaded node files
@@ -39,7 +38,6 @@ const NODE_LIB_FILE = join(NODE_LIB_DIR, "node.lib");
 
 // auto generated files
 const SRC_FILE = join(SRC_DIR, "module.cpp");
-const TEST_FILE = join(TEST_DIR, "index.js");
 const CMAKE_LISTS_FILE = join(ROOT, "CMakeLists.txt");
 const NAPI_CMAKE_FILE = join(ROOT, "napi.cmake");
 const PACKAGE_JSON_FILE = join(ROOT, "package.json");
@@ -47,11 +45,11 @@ const GITIGNORE_FILE = join(ROOT, ".gitignore");
 // #endregion
 
 // #region Utilities
-const which = (cmd, optional = false) => new Promise((resolve, reject) => {
+/*const which = (cmd, optional = false) => new Promise((resolve, reject) => {
     const proc = spawn(WHICH_CMD, [cmd]);
     createInterface(proc.stdout).on("line", resolve);
     proc.on("exit", code => optional ? resolve(!(code === 0 && optional)) : reject(`Could not find '${cmd}' in the path.`));
-});
+});*/
 
 const verify = (cmd, optional = false) => new Promise((resolve, reject) => {
     spawn(WHICH_CMD, [cmd]).on("exit", code => optional ? resolve(!(code === 0 && optional)) : reject(`Could not find '${cmd}' in the path.`));
@@ -200,10 +198,6 @@ const PACKAGE_JSON = (name) => src`
         }
     }`;
 
-const TEST_JS = () => src`
-    const val = require("${relative(TEST_DIR, ROOT)}");
-    console.log(val);`;
-
 const GITIGNORE = () => src`
     .vscode
     ${relative(ROOT, BUILD_DIR)}
@@ -223,13 +217,11 @@ const create = async (name) => {
     await mkdir(join(ROOT, name));
     process.chdir(join(ROOT, name));
     await mkdir(SRC_DIR);
-    await mkdir(TEST_DIR);
 
     // generate default files
     await Promise.all([
         writeFile(CMAKE_LISTS_FILE, CMAKE_LISTS_TXT(name, version)),
         writeFile(SRC_FILE, MODULE_C(name)),
-        writeFile(TEST_FILE, TEST_JS()),
         writeFile(PACKAGE_JSON_FILE, PACKAGE_JSON(name)),
     ]);
 
@@ -265,13 +257,6 @@ const build = async (debug = false, generator = "Ninja") => {
     process.chdir("..");
 }
 
-const test = async () => {
-    const node = await which("node");
-    const proc = spawn(node, [TEST_DIR]);
-    proc.stdout.pipe(process.stdout);
-    proc.stderr.pipe(process.stderr);
-};
-
 const clean = async (all = false) => {
     await remove(BUILD_DIR, true);
     all && await remove(NODE_HEADER_DIR, true);
@@ -293,10 +278,6 @@ const clean = async (all = false) => {
             const debug = !!arg && arg.toLowerCase() === "debug";
             console.log(`Building project in ${debug ? "debug" : "release"} mode...`);
             await build(debug).catch(clear(BUILD_DIR));
-            break;
-        case "test":
-            console.log("Running tests...");
-            await test();
             break;
         case "clean":
             console.log("Cleaning up...");
