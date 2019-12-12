@@ -45,14 +45,8 @@ const GITIGNORE_FILE = join(ROOT, ".gitignore");
 // #endregion
 
 // #region Utilities
-/*const which = (cmd, optional = false) => new Promise((resolve, reject) => {
-    const proc = spawn(WHICH_CMD, [cmd]);
-    createInterface(proc.stdout).on("line", resolve);
-    proc.on("exit", code => optional ? resolve(!(code === 0 && optional)) : reject(`Could not find '${cmd}' in the path.`));
-});*/
-
-const verify = (cmd, optional = false) => new Promise((resolve, reject) => {
-    spawn(WHICH_CMD, [cmd]).on("exit", code => optional ? resolve(!(code === 0 && optional)) : reject(`Could not find '${cmd}' in the path.`));
+const verify = (cmd, required = true) => new Promise((resolve, reject) => {
+    spawn(WHICH_CMD, [cmd]).on("exit", code => required ? resolve(!(code !== 0 && required)) : reject(`Could not find '${cmd}' in the path.`));
 });
 
 const remove = async (path, ignoreErrors = true) => {
