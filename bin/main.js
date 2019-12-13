@@ -6,6 +6,7 @@ const { createWriteStream } = require("fs");
 const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
 const { get } = require("https");
 const { EOL } = require("os");
+const { join, relative } = require("path").posix;
 const { createInterface } = require("readline");
 const { extract: untar } = require("tar-fs");
 const { createGunzip: gunzip } = require("zlib");
@@ -16,7 +17,6 @@ const { node: NODE_SEMVER_VERSION, napi: NAPI_VERSION } = process.versions;
 const NODE_VERSION = process.version;
 const IS_WINDOWS = process.platform === "win32"
 const NODE_ARCH = process.arch === "x64" ? "win-x64" : "win-x86";
-const { join, relative } = IS_WINDOWS ? require("path").win32 : require("path");
 const WHICH_CMD = IS_WINDOWS ? join(process.env.WINDIR, "System32", "where.exe") : "/usr/bin/which";
 
 // base URL for all node binary distribution and header files
@@ -161,7 +161,7 @@ const CMAKE_LISTS_TXT = (name, version) => src`
     cmake_minimum_required(VERSION ${version})
     project(${name})
 
-    set(CMAKE_C_STANDARD 99)
+    set(CMAKE_CXX_STANDARD 17)
 
     add_library(\${PROJECT_NAME} SHARED "src/module.cpp")
     set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
@@ -180,7 +180,7 @@ const PACKAGE_JSON = (name) => src`
     {
         "name": "${name}",
         "version": "0.0.0",
-        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`)).replace("\\", IS_WINDOWS ? "\\\\" : "\\")}",
+        "main": "${relative(ROOT, join(BUILD_DIR, `${name}.node`))}",
         "devDependencies": {
             "@sigma-db/napi": "^${PACKAGE_VERSION}"
         },
@@ -253,7 +253,13 @@ const build = async (debug = false, generator = "Ninja") => {
 
 const clean = async (all = false) => {
     await remove(BUILD_DIR, true);
-    all && await remove(NODE_HEADER_DIR, true);
+    if (all) {
+        await Promise.all([
+            remove(NODE_HEADER_DIR, true),
+            remove(NODE_LIB_FILE, true),
+            remove(NAPI_CMAKE, true),
+        ]);
+    }
 }
 // #endregion
 
