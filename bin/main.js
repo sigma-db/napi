@@ -120,7 +120,7 @@ const getCMakeVersion = () => new Promise((resolve, reject) => {
     createInterface(spawn("cmake", ["--version"]).stdout)
         .on("line", line => {
             if (!done) {
-                const version = /(\d+\.\d+\.\d+)/g.exec(line)[1];
+                const version = /(\d+\.\d+)/g.exec(line)[1];
                 resolve(version);
             }
             done = true;
@@ -284,7 +284,7 @@ const clean = async (all = false) => {
             await clean(arg === "all");
             break;
         default:
-            console.error("None of the possible options 'create <name>', 'install', 'build', or 'clean' were specified.");
+            console.error("None of the possible options 'new <name>', 'init', 'build', or 'clean [all]' were specified.");
             process.exit(1);
     }
 })(process.argv[2], process.argv[3]);
