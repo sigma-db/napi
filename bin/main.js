@@ -61,7 +61,7 @@ const remove = async (path, ignoreErrors = true) => {
 };
 
 const clear = (path, ignore = false) => async (error) => {
-    !ignore && console.error(!!error.message ? error.message : error);
+    !ignore && console.error(error);
     if (!!path) {
         console.log("Cleaning up...");
         if (Array.isArray(path)) {
@@ -84,7 +84,7 @@ const exit = (name) => async (error) => {
             await rmdir(prjDir);
         }
     } catch { }
-    console.error(!!error.message ? error.message : error);
+    console.error(error);
     process.exit(1);
 };
 

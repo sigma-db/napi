@@ -9,8 +9,8 @@ This project eases the process of setting up an environment for developing [nati
 
 Currently, this tool requires `cmake` and `ninja` to be in your `PATH`, as well as a working C/C++ toolchain.
 
-* On Windows, you can use the [Visual Studio Build Tools](https://download.visualstudio.microsoft.com/download/pr/5446351f-19f5-4b09-98c6-a4bfacc732d7/7da4388648c92544c97407c6f052fd6bc0317db407cadab9fdcb328a34d3e317/vs_BuildTools.exe) which includes all required tools.
-* On Linux or UNIX-like environments, make sure to have `cmake`, `ninja`, `clang`/`gcc` and `ld` available in your `PATH`.
+* On **Windows**, you can use the [Visual Studio Build Tools](https://download.visualstudio.microsoft.com/download/pr/5446351f-19f5-4b09-98c6-a4bfacc732d7/7da4388648c92544c97407c6f052fd6bc0317db407cadab9fdcb328a34d3e317/vs_BuildTools.exe) which includes all required tools. In that case, make sure that you use the appropriate *Tools Command Prompt for Visual Studio*
+* On **Linux** and other **UNIX**-like environments, make sure to have `cmake`, `ninja`, `clang`/`gcc` and `ld` available in your `PATH`.
 
 ## Installation
 
