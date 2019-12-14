@@ -61,7 +61,7 @@ const remove = async (path, ignoreErrors = true) => {
 };
 
 const clear = (path, ignore = false) => async (error) => {
-    !ignore && console.error(error);
+    !ignore && console.error(!!error.message ? error.message : error);
     if (!!path) {
         console.log("Cleaning up...");
         if (Array.isArray(path)) {
@@ -84,7 +84,7 @@ const exit = (name) => async (error) => {
             await rmdir(prjDir);
         }
     } catch { }
-    console.error(error);
+    console.error(!!error.message ? error.message : error);
     process.exit(1);
 };
 
@@ -263,6 +263,7 @@ const clean = async (all = false) => {
 }
 // #endregion
 
+const [, , cmd, arg] = process.argv;
 (async function main(cmd, arg) {
     switch (cmd) {
         case "new":
@@ -287,4 +288,4 @@ const clean = async (all = false) => {
             console.error("None of the possible options 'new <name>', 'init', 'build', or 'clean [all]' were specified.");
             process.exit(1);
     }
-})(process.argv[2], process.argv[3]);
+})(cmd, arg);
