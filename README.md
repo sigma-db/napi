@@ -32,8 +32,4 @@ Assume we want to create and build a project named `native`.
 
 ### Changing the Node.js version
 
-If you happen to change to version of Node.js, you will also require new header and static library files. In that case, run `napi clean all`, which will delete any previously downloaded header and library files, as well as any built files.
-
-## Disclaimer
-
-The current code was written in a single 16h session and might need quite some refactoring and more user-friendly error-handling — I'd love to see people contributing.
+If you happen to change your version of Node.js, you also need new header and static library files. In that case, run `napi clean all`, which will delete any previously downloaded header and library files, as well as any built files.
