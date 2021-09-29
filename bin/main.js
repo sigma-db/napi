@@ -37,7 +37,7 @@ const NODE_LIB_DIR = join(ROOT, "libs");
 const NODE_LIB_FILE = join(NODE_LIB_DIR, "node.lib");
 
 // auto generated files
-const SRC_FILE = join(SRC_DIR, "module.cpp");
+const SRC_FILE = join(SRC_DIR, "module.c");
 const CMAKE_LISTS_FILE = join(ROOT, "CMakeLists.txt");
 const NAPI_CMAKE_FILE = join(ROOT, "napi.cmake");
 const PACKAGE_JSON_FILE = join(ROOT, "package.json");
@@ -161,9 +161,9 @@ const CMAKE_LISTS_TXT = (name, version) => src`
     cmake_minimum_required(VERSION ${version})
     project(${name})
 
-    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_C_STANDARD 11)
 
-    add_library(\${PROJECT_NAME} SHARED "src/module.cpp")
+    add_library(\${PROJECT_NAME} SHARED "src/module.c")
     set_target_properties(\${PROJECT_NAME} PROPERTIES PREFIX "" SUFFIX ".node")
 
     include(${NAPI_CMAKE_FILE})`;
