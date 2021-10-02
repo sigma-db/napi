@@ -1,15 +1,14 @@
-"use strict";
-const { version: PACKAGE_VERSION } = require("../package.json");
-const { ok } = require("assert").strict;
-const { spawn } = require("child_process");
-const { createWriteStream } = require("fs");
-const { access, mkdir, rmdir, unlink, lstat, writeFile } = require("fs").promises;
-const { get } = require("https");
-const { EOL } = require("os");
-const { join, relative } = require("path").posix;
-const { createInterface } = require("readline");
-const { extract: untar } = require("tar-fs");
-const { createGunzip: gunzip } = require("zlib");
+import { version as PACKAGE_VERSION } from "../package.json";
+import { ok } from "assert/strict";
+import { spawn } from "child_process";
+import { createWriteStream } from "fs";
+import { access, mkdir, rmdir, unlink, lstat, writeFile } from "fs/promises";
+import { get } from "https";
+import { EOL } from "os";
+import { join, relative } from "path/posix";
+import { createInterface } from "readline";
+import { extract as untar } from "tar-fs";
+import { createGunzip as gunzip } from "zlib";
 
 // #region Constants
 // platform specific stuff
@@ -264,28 +263,26 @@ const clean = async (all = false) => {
 // #endregion
 
 const [, , cmd, arg] = process.argv;
-(async function main(cmd, arg) {
-    switch (cmd) {
-        case "new":
-            ok(!!arg, "You must specify a project name.");
-            console.log("Generating project...");
-            await create(arg).catch(exit(arg));
-            break;
-        case "init":
-            console.log("Fetching Node.js dependencies...");
-            await init().catch(clear([NODE_HEADER_DIR, NODE_LIB_DIR, BUILD_DIR, NAPI_CMAKE_FILE], true));
-            break;
-        case "build":
-            const debug = !!arg && arg.toLowerCase() === "debug";
-            console.log(`Building project in ${debug ? "debug" : "release"} mode...`);
-            await build(debug).catch(clear(BUILD_DIR));
-            break;
-        case "clean":
-            console.log("Cleaning up...");
-            await clean(arg === "all");
-            break;
-        default:
-            console.error("None of the possible options 'new <name>', 'init', 'build', or 'clean [all]' were specified.");
-            process.exit(1);
-    }
-})(cmd, arg);
+switch (cmd) {
+    case "new":
+        ok(!!arg, "You must specify a project name.");
+        console.log("Generating project...");
+        await create(arg).catch(exit(arg));
+        break;
+    case "init":
+        console.log("Fetching Node.js dependencies...");
+        await init().catch(clear([NODE_HEADER_DIR, NODE_LIB_DIR, BUILD_DIR, NAPI_CMAKE_FILE], true));
+        break;
+    case "build":
+        const debug = !!arg && arg.toLowerCase() === "debug";
+        console.log(`Building project in ${debug ? "debug" : "release"} mode...`);
+        await build(debug).catch(clear(BUILD_DIR));
+        break;
+    case "clean":
+        console.log("Cleaning up...");
+        await clean(arg === "all");
+        break;
+    default:
+        console.error("None of the possible options 'new <name>', 'init', 'build', or 'clean [all]' were specified.");
+        process.exit(1);
+}

@@ -1,32 +1,33 @@
 {
-  "name": "@sigma-db/napi",
-  "version": "0.4.2",
-  "description": "A utility to setup an environment for development of native Node.js modules.",
-  "keywords": [
-    "N-API",
-    "native"
-  ],
-  "author": {
-    "name": "David Luis Wiegandt",
-    "email": "wigandtd@hu-berlin.de",
-    "url": "https://dlw93.github.io"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://dev.azure.com/dlw/sigmaDB/_git/napi-cli"
-  },
-  "license": "MIT",
-  "engines": {
-    "node": ">=12.0.0"
-  },
-  "bin": "index.js",
-  "scripts": {
-    "prepare": "webpack",
-    "publish": "node ./scripts/clean.js"
-  },
-  "devDependencies": {
-    "tar-fs": "^2.1.1",
-    "webpack": "^5.54.0",
-    "webpack-cli": "^4.8.0"
-  }
+    "name": "@sigma-db/napi",
+    "version": "0.4.2",
+    "description": "A utility to setup an environment for development of native Node.js modules.",
+    "keywords": [
+        "N-API",
+        "native"
+    ],
+    "author": {
+        "name": "David Luis Wiegandt",
+        "email": "wigandtd@hu-berlin.de",
+        "url": "https://dlw93.github.io"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/dlw93/napi.git"
+    },
+    "license": "MIT",
+    "engines": {
+        "node": ">=14.8.0"
+    },
+    "type": "module",
+    "bin": "index.js",
+    "scripts": {
+        "prepare": "webpack",
+        "publish": "node ./scripts/clean.js"
+    },
+    "devDependencies": {
+        "tar-fs": "^2.1.1",
+        "webpack": "^5.54.0",
+        "webpack-cli": "^4.8.0"
+    }
 }
